@@ -2,12 +2,14 @@
 
 import argparse
 import math
+import multiprocessing as mp
 import os
 import queue
+import signal
 import struct
 import sys
 import time
-from queue import Queue
+from queue import Empty
 from threading import Thread
 
 import cv2
@@ -18,25 +20,25 @@ from imutils.video import FPS
 
 
 class MyVideoStream:
-    def __init__(self, src=0, usePiCamera=False, resolution=(320, 240), framerate=32,
-                 qmode=True, **kwargs):
+    def __init__(self, src=0, usePiCamera=False, resolution=(320, 240), framerate=None,
+                 frame_q=None, **kwargs):
         # check to see if the picamera module should be used
         if usePiCamera:
             # only import the picamera packages unless we are
-            # explicity told to do so -- this helps remove the
+            # explicitly told to do so -- this helps remove the
             # requirement of `picamera[array]` from desktops or
             # laptops that still want to use the `imutils` package
 
             # initialize the picamera stream and allow the camera
             # sensor to warmup
-            self.stream = MyPiVideoStream(resolution=resolution, qmode=qmode,
-                                          framerate=framerate, **kwargs)
+            self.stream = MyPiVideoStream(resolution=resolution, framerate=framerate,
+                                          frame_q=frame_q, **kwargs)
 
         # otherwise, we are using OpenCV so initialize the webcam
         # stream
         else:
-            self.stream = MyWebcamVideoStream(src=src, resolution=resolution, framerate=framerate,
-                                              qmode=qmode)
+            self.stream = MyVideoCapture(src=src, resolution=resolution, framerate=framerate,
+                                         frame_q=frame_q)
 
     def start(self):
         # start the threaded video stream
@@ -54,13 +56,13 @@ class MyVideoStream:
         # stop the thread and release any resources
         self.stream.stop()
 
+    def join(self):
+        self.stream.join()
+
 
 class MyPiVideoStream:
-    def __init__(self, resolution=(320, 240), framerate=32, qmode=True, **kwargs):
-        if qmode:
-            self.frame_q = Queue()
-        else:
-            self.frame_q = None
+    def __init__(self, resolution=(320, 240), framerate=32, frame_q=None, **kwargs):
+        self.frame_q = frame_q
 
         # initialize the camera
         import picamera.array
@@ -82,15 +84,19 @@ class MyPiVideoStream:
 
         # initialize the frame and the variable used to indicate
         # if the thread should be stopped
+        self.stopped = False
+
+        self.thread = None
         self.frame = None
         self.framenum = None
-        self.stopped = False
+        self.framew = None
+        self.frameh = None
 
     def start(self):
         # start the thread to read frames from the video stream
-        t = Thread(target=self.update, args=())
-        t.daemon = True
-        t.start()
+        self.thread = Thread(target=self.update, args=())
+        self.thread.daemon = True
+        self.thread.start()
         return self
 
     def update(self):
@@ -120,9 +126,9 @@ class MyPiVideoStream:
         # return the frame most recently read
         if self.frame_q is not None:
             try:
-                (self.framenum, self.frame) = self.frame_q.get(timeout=.5)
-            except queue.Empty:
-                return None, None
+                (self.framenum, self.frame) = self.frame_q.get(timeout=1)
+            except Empty:
+                pass
         else:
             # time.sleep(.01)
             pass
@@ -132,14 +138,14 @@ class MyPiVideoStream:
         # indicate that the thread should be stopped
         self.stopped = True
 
+    def join(self):
+        self.thread.join()
 
-class MyWebcamVideoStream:
-    def __init__(self, src=0, resolution=(None, None), framerate=None, qmode=True,
-                 name="WebcamVideoStream"):
-        if qmode:
-            self.frame_q = Queue()
-        else:
-            self.frame_q = None
+
+class MyVideoCapture(object):
+    def __init__(self, src=0, resolution=(None, None), framerate=None, frame_q=None,
+                 name="VideoCapture"):
+        self.frame_q = frame_q
         # initialize the video camera stream and read the first frame
         # from the stream
         self.stream = cv2.VideoCapture(src)
@@ -149,26 +155,25 @@ class MyWebcamVideoStream:
             self.stream.set(cv2.CAP_PROP_FRAME_HEIGHT, resolution[1])
         if framerate is not None:
             self.stream.set(cv2.CAP_PROP_FPS, framerate)
-        (self.grabbed, frame) = self.stream.read()
-        if self.frame_q is not None:
-            self.frame_q.put_nowait(frame)
-        else:
-            self.frame = frame
 
         # initialize the thread name
         self.name = name
 
         # initialize the variable used to indicate if the thread should
         # be stopped
+        self.stopped = False
+
+        self.thread = None
         self.frame = None
         self.framenum = None
-        self.stopped = False
+        self.framew = None
+        self.frameh = None
 
     def start(self):
         # start the thread to read frames from the video stream
-        t = Thread(target=self.update, name=self.name, args=())
-        t.daemon = True
-        t.start()
+        self.thread = Thread(target=self.update, name=self.name, args=())
+        self.thread.daemon = True
+        self.thread.start()
         return self
 
     def update(self):
@@ -177,11 +182,17 @@ class MyWebcamVideoStream:
         while True:
             # if the thread indicator variable is set, stop the thread
             if self.stopped:
-                print("orphans:", self.frame_q.qsize())
+                print("frames:", framenum)
+                try:
+                    print("orphans:", self.frame_q.qsize())
+                except NotImplementedError:
+                    pass
                 return
 
             # otherwise, read the next frame from the stream
-            (self.grabbed, frame) = self.stream.read()
+            (_, frame) = self.stream.read()
+            if self.framew is None and frame is not None:
+                (self.frameh, self.framew) = frame.shape[:2]
             framenum += 1
             if self.frame_q is not None:
                 self.frame_q.put_nowait((framenum, frame))
@@ -194,7 +205,7 @@ class MyWebcamVideoStream:
         if self.frame_q is not None:
             try:
                 (self.framenum, self.frame) = self.frame_q.get(timeout=1)
-            except (queue.Empty, ValueError):
+            except Empty:
                 pass
         else:
             # time.sleep(.01)
@@ -204,6 +215,9 @@ class MyWebcamVideoStream:
     def stop(self):
         # indicate that the thread should be stopped
         self.stopped = True
+
+    def join(self):
+        self.thread.join()
 
 
 def draw_landmarks(frame, shapes, center):
@@ -233,19 +247,45 @@ def point_distance(p1, p2):
     return d
 
 
-def face_detect(demoq):
+def face_detect_mp(frameq, shapesq, detector, predictor, args):
+    signal.signal(signal.SIGINT, signal.SIG_IGN)
+
+    r = None
+    dim = None
+    for framenum, frame in iter(frameq.get, "STOP"):
+        if framenum == 1:
+            print(frame.shape)
+        if dim is None:
+            (h, w) = frame.shape[:2]
+            r = args.scalew / float(w)
+            dim = (args.scalew, int(h * r))
+
+        gframe = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        sgframe = cv2.resize(gframe, dim, interpolation=cv2.INTER_AREA)
+        faces = detector(sgframe)
+        if len(faces) == 0:
+            shapes = None
+        else:
+            face = dlib.rectangle(int(faces[0].left() / r),
+                                  int(faces[0].top() / r),
+                                  int(faces[0].right() / r),
+                                  int(faces[0].bottom() / r))
+            shapes = predictor(gframe, face)
+            shapes = face_utils.shape_to_np(shapes)
+        if args.onraspi:
+            frame = None
+        shapesq.put_nowait((framenum, frame, shapes))
+
+    shapesq.cancel_join_thread()
+    print(mp.current_process().name, "stopped.")
+    return 0
+
+
+def face_detect(demoq, detector, predictor):
     global running
-    global SCALEW
     global _args_
 
-    cwd = os.path.abspath(os.path.dirname(__file__))
-    model_path = os.path.abspath(os.path.join(cwd, "shape_predictor_68_face_landmarks.dat"))
-    # model_path = os.path.abspath(os.path.join(cwd, "shape_predictor_5_face_landmarks.dat"))
-    predictor = dlib.shape_predictor(model_path)
-    detector = dlib.get_frontal_face_detector()
-
     ebds = None
-    fd = None
     prevdx = 0
     prevdy = 0
     pos = None
@@ -267,16 +307,15 @@ def face_detect(demoq):
              4.6, 4.7, 4.8, 4.9, 5.0,
              5.1, 5.2, 5.3, 5.4, 5.5, ]
 
-    if on_raspi:
-        fd = open('/dev/hidg0', 'rb+')
+    if _args_.onraspi:
         if _args_.usbcam:
             rotate = None
             resolution = (640, 480)
         else:
             rotate = 180
             resolution = (640, 480)
-        webcam = MyVideoStream(usePiCamera=not _args_.usbcam, resolution=resolution, qmode=_args_.qmode,
-                               rotation=rotate).start()
+        webcam = MyVideoStream(usePiCamera=not _args_.usbcam, resolution=resolution,
+                               qmode=_args_.qmode, rotation=rotate).start()
         time.sleep(2)
         fps = FPS()
         fps.start()
@@ -296,8 +335,8 @@ def face_detect(demoq):
         if dim is None:
             (h, w) = frame.shape[:2]
             maxheight, maxwidth = (h, w)
-            r = SCALEW / float(w)
-            dim = (SCALEW, int(h * r))
+            r = _args_.scalew / float(w)
+            dim = (_args_.scalew, int(h * r))
             # widthratio = 1440 / w
             # heightratio = 900 / h
             # xgain *= widthratio
@@ -379,15 +418,15 @@ def face_detect(demoq):
         dx = -int(round(dx))
         dy = int(round(dy))
 
-        if on_raspi:
+        if _args_.onraspi:
             if ebr:
                 click = 1
                 # print('click')
             else:
                 click = 0
             report = struct.pack('<2b2h', 2, click, dx, dy)
-            fd.write(report)
-            fd.flush()
+            with open('/dev/hidg0', 'rb+') as fd:
+                fd.write(report)
             fps.update()
             continue
 
@@ -416,7 +455,7 @@ def face_detect(demoq):
             else:
                 cpos[1] = 0
 
-        # cv2.circle(frame, (int(cpos[0]), int(cpos[1])), 4, (0, 0, 255), -1)
+        cv2.circle(frame, (int(cpos[0]), int(cpos[1])), 4, (0, 0, 255), -1)
 
         cv2.putText(frame, str((ebd, ebda, eb_down, ebr)), (90, 130),
                     cv2.FONT_HERSHEY_DUPLEX, 0.9, (147, 58, 31), 1)
@@ -433,43 +472,203 @@ def face_detect(demoq):
         # frame = face_utils.visualize_facial_landmarks(frame, shapes, [(0,255,0),]*8)
         demoq.put(frame)
 
+    if _args_.onraspi:
+        report = struct.pack('<2b2h', 2, 0, 0, 0)
+        with open('/dev/hidg0', 'rb+') as fd:
+            fd.write(report)
+
     webcam.stop()
-    if fd is not None:
-        fd.close()
     print('')
     if fps is not None:
         fps.stop()
         print(fps.elapsed(), fps.fps())
 
 
-def main():
-    global running
-    global _args_
-    _parser_ = argparse.ArgumentParser()
-    # _parser_.add_argument("-a", "--analyze-only", action="store_true",
-    #                       help="analyze the supplied file")
-    _parser_.add_argument("-p", "--profile", action="store_true",
-                          help="enable profiling")
-    _parser_.add_argument("-q", "--qmode", action="store_true",
-                          help="enable queue mode")
-    _parser_.add_argument("-s", "--smoothness", default=1, type=int, choices=range(1, 9),
-                          help="smoothness 1-8 (default: 1)")
-    _parser_.add_argument("-u", "--usbcam", action="store_true",
-                          help="Use usb camera instead of PiCamera")
-    _parser_.add_argument("-x", "--xgain", default=1.0, type=float,
-                          help="X gain")
-    _parser_.add_argument("-y", "--ygain", default=1.0, type=float,
-                          help="Y gain")
-    _parser_.add_argument("--ebd", default=7.0, type=float,
-                          help="Eyebrow distance for click (default: 7.0)")
-    _args_ = _parser_.parse_args()
+def start_face_detect_procs(detector, predictor):
+    ebds = None
+    prevdx = 0
+    prevdy = 0
+    pos = None
+    cpos = None
+    eb_down = None
+    maxwidth, maxheight = None, None
 
-    if _args_.profile:
-        yappi.start(builtins=True)
+    xgain, ygain = _args_.xgain, _args_.ygain
+    print(xgain, ygain)
+    wrap = False
+    mindeltathresh = 1
+    smoothness = _args_.smoothness  # <= 8
+    motionweight = math.log10(float(smoothness) + 1)
+    accel = [1.0, 1.0, 1.5, 1.6, 1.7,
+             1.8, 1.9, 2.0, 2.1, 2.2,
+             2.3, 2.4, 2.5, 3.0, 4.0,
+             4.1, 4.2, 4.3, 4.4, 4.5,
+             4.6, 4.7, 4.8, 4.9, 5.0,
+             5.1, 5.2, 5.3, 5.4, 5.5, ]
+
+    frameq = mp.Queue()
+    shapesq = mp.Queue()
+    workers = []
+    for _ in range(_args_.procs):
+        _p = mp.Process(target=face_detect_mp, args=(frameq, shapesq, detector, predictor, _args_))
+        _p.start()
+        workers.append(_p)
+
+    rotate = None
+    picam = False
+    if _args_.onraspi:
+        resolution = (640, 480)
+        if not _args_.usbcam:
+            rotate = 180
+            picam = True
+    else:
+        resolution = (1280, 720)
+
+    cam = MyVideoStream(usePiCamera=picam, resolution=resolution, frame_q=frameq,
+                        rotation=rotate).start()
+    fps = FPS()
+    try:
+        while True:
+            framenum, frame, shapes = shapesq.get()
+            if framenum == 1:
+                fps.start()
+            if shapes is None:
+                fps.update()
+                continue
+            nose = shapes[30]
+            facec = feature_center(shapes)
+            ebc = feature_center(shapes[17:27])
+            eyec = feature_center(shapes[36:48])
+            ebd = point_distance(ebc, eyec)
+
+            if pos is None:
+                pos = [nose, nose]
+                cpos = nose
+                ebds = [ebd, ebd]
+                maxwidth, maxheight = cam.framew, cam.frameh
+            else:
+                pos.append(pos.pop(0))
+                pos[-1] = nose
+                ebds.append(ebds.pop(0))
+                ebds[-1] = ebd
+                if eb_down is None:
+                    eb_down = sum(ebds) / len(ebds)
+
+            ebda = sum(ebds) / len(ebds)
+            if eb_down is not None and ebda - eb_down > _args_.ebd:
+                ebr = True
+            else:
+                ebr = False
+
+            dx = pos[1][0] - pos[0][0]
+            dy = pos[1][1] - pos[0][1]
+
+            dx *= xgain
+            dy *= ygain
+            dx = dx * (1.0 - motionweight) + prevdx * motionweight
+            dy = dy * (1.0 - motionweight) + prevdy * motionweight
+            prevdx = dx
+            prevdy = dy
+
+            dist = math.sqrt(dx * dx + dy * dy)
+            i_accel = int(dist + 0.5)
+            if i_accel >= len(accel):
+                i_accel = len(accel) - 1
+
+            if -mindeltathresh < dx < mindeltathresh:
+                dx = 0
+            if -mindeltathresh < dy < mindeltathresh:
+                dy = 0
+            dx *= accel[i_accel]
+            dy *= accel[i_accel]
+            dx = -int(round(dx))
+            dy = int(round(dy))
+
+            if ebr:
+                click = 1
+                # print('click')
+            else:
+                click = 0
+            if _args_.onraspi:
+                report = struct.pack('<2b2h', 2, click, dx, dy)
+                with open('/dev/hidg0', 'rb+') as fd:
+                    fd.write(report)
+                fps.update()
+                continue
+
+            # On dev system, draw stuff and simulate pointer
+            cpos[0] += dx
+            cpos[1] += dy
+
+            if cpos[0] > maxwidth:
+                if wrap:
+                    cpos[0] -= maxwidth
+                else:
+                    cpos[0] = maxwidth
+            if cpos[1] > maxheight:
+                if wrap:
+                    cpos[1] -= maxheight
+                else:
+                    cpos[1] = maxheight
+            if cpos[0] < 0:
+                if wrap:
+                    cpos[0] += maxwidth
+                else:
+                    cpos[0] = 0
+            if cpos[1] < 0:
+                if wrap:
+                    cpos[1] += maxheight
+                else:
+                    cpos[1] = 0
+
+            cv2.circle(frame, (int(cpos[0]), int(cpos[1])), 4, (0, 0, 255), -1)
+
+            cv2.putText(frame, str((ebd, ebda, eb_down, ebr)), (90, 130),
+                        cv2.FONT_HERSHEY_DUPLEX, 0.9, (147, 58, 31), 1)
+            # cv2.putText(frame, "brows: " + str(t2), (90, 165),
+            #             cv2.FONT_HERSHEY_DUPLEX, 0.9, (147, 58, 31), 1)
+            cv2.putText(frame, "nose: " + str(nose), (90, 200),
+                        cv2.FONT_HERSHEY_DUPLEX, 0.9, (147, 58, 31), 1)
+            cv2.putText(frame, "dxdy: " + str((dx, dy)), (90, 235),
+                        cv2.FONT_HERSHEY_DUPLEX, 0.9, (147, 58, 31), 1)
+            cv2.putText(frame, "ptr : " + str((int(cpos[0]), int(cpos[1]))), (90, 270),
+                        cv2.FONT_HERSHEY_DUPLEX, 0.9, (147, 58, 31), 1)
+
+            draw_landmarks(frame, shapes, facec)
+            # frame = face_utils.visualize_facial_landmarks(frame, shapes, [(0,255,0),]*8)
+            cv2.imshow("Demo", frame)
+            fps.update()
+
+            if cv2.waitKey(1) == 27:
+                break
+
+    except KeyboardInterrupt:
+        pass
+
+    if _args_.onraspi:
+        report = struct.pack('<2b2h', 2, 0, 0, 0)
+        with open('/dev/hidg0', 'rb+') as fd:
+            fd.write(report)
+
+    fps.stop()
+    cam.stop()
+    cam.join()
+
+    for i in range(_args_.procs):
+        frameq.put('STOP')
+    for p in workers:
+        print("joining", p.name)
+        p.join()
+
+    print(fps.elapsed(), fps.fps())
+
+
+def start_face_detect_thread(detector, predictor):
+    global running
 
     fps = FPS()
-    demoq = Queue()
-    t = Thread(target=face_detect, args=(demoq,))
+    demoq = queue.Queue()
+    t = Thread(target=face_detect, args=(demoq, detector, predictor))
     t.start()
     fps.start()
     try:
@@ -488,6 +687,62 @@ def main():
     t.join()
     print(fps.elapsed(), fps.fps())
 
+
+def parse_arguments():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-e", "--ebd", default=7.0, type=float,
+                        help="Eyebrow distance for click (default: 7.0)")
+    parser.add_argument("-p", "--profile", action="store_true",
+                        help="enable profiling")
+    parser.add_argument("-q", "--qmode", action="store_true",
+                        help="enable queue mode")
+    parser.add_argument("-r", "--procs", default=2, type=int,
+                        help="number of procs (default: 2)")
+    parser.add_argument("-s", "--smoothness", default=1, type=int, choices=range(1, 9),
+                        help="smoothness 1-8 (default: 1)")
+    parser.add_argument("-u", "--usbcam", action="store_true",
+                        help="Use usb camera instead of PiCamera")
+    parser.add_argument("-w", "--scalew", default=320, type=int,
+                        help="scale width (default: 320)")
+    parser.add_argument("-x", "--xgain", default=1.0, type=float,
+                        help="X gain")
+    parser.add_argument("-y", "--ygain", default=1.0, type=float,
+                        help="Y gain")
+    parser.add_argument("--onraspi", action="store_true",
+                        help="")
+    args = parser.parse_args()
+    return args
+
+
+def main():
+    global running
+    global _args_
+
+    _args_ = parse_arguments()
+
+    if not _args_.onraspi:
+        try:
+            with open('/dev/hidg0', 'rb+') as _:
+                _args_.onraspi = True
+        except FileNotFoundError:
+            pass
+
+    if _args_.profile:
+        yappi.start(builtins=True)
+
+    print("loading detector, predictor: ", end="", flush=True)
+    cwd = os.path.abspath(os.path.dirname(__file__))
+    model_path = os.path.abspath(os.path.join(cwd, "shape_predictor_68_face_landmarks.dat"))
+    # model_path = os.path.abspath(os.path.join(cwd, "shape_predictor_5_face_landmarks.dat"))
+    detector = dlib.get_frontal_face_detector()
+    predictor = dlib.shape_predictor(model_path)
+    print("done.")
+
+    if _args_.procs > 0:
+        start_face_detect_procs(detector, predictor)
+    else:
+        start_face_detect_thread(detector, predictor)
+
     if _args_.profile:
         yappi.stop()
 
@@ -504,13 +759,7 @@ def main():
 
 
 if __name__ == '__main__':
-    try:
-        with open('/dev/hidg0', 'rb+') as _:
-            on_raspi = True
-    except FileNotFoundError:
-        on_raspi = False
     running = True
-    SCALEW = 320
     global _args_
 
     sys.exit(main())
