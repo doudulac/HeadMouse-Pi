@@ -17,6 +17,9 @@ import dlib
 import yappi
 from imutils import face_utils
 from imutils.video import FPS
+from filterpy.kalman import KalmanFilter
+from filterpy.common import Q_discrete_white_noise
+import numpy as np
 
 
 class MyVideoStream:
@@ -493,6 +496,9 @@ def start_face_detect_procs(detector, predictor):
     eb_down = None
     maxwidth, maxheight = None, None
 
+    nose_flt_x = kalmanfilter_init()
+    nose_flt_y = kalmanfilter_init()
+
     xgain, ygain = _args_.xgain, _args_.ygain
     print(xgain, ygain)
     wrap = False
@@ -536,6 +542,13 @@ def start_face_detect_procs(detector, predictor):
                 fps.update()
                 continue
             nose = shapes[30]
+
+            nose_flt_x.predict()
+            nose_flt_y.predict()
+            nose_flt_x.update(nose[0])
+            nose_flt_y.update(nose[1])
+            nose = [nose_flt_x.x[0], nose_flt_y.x[0]]
+
             facec = feature_center(shapes)
             ebc = feature_center(shapes[17:27])
             eyec = feature_center(shapes[36:48])
@@ -565,24 +578,26 @@ def start_face_detect_procs(detector, predictor):
 
             dx *= xgain
             dy *= ygain
-            dx = dx * (1.0 - motionweight) + prevdx * motionweight
-            dy = dy * (1.0 - motionweight) + prevdy * motionweight
-            prevdx = dx
-            prevdy = dy
+            # dx = dx * (1.0 - motionweight) + prevdx * motionweight
+            # dy = dy * (1.0 - motionweight) + prevdy * motionweight
+            # prevdx = dx
+            # prevdy = dy
 
             dist = math.sqrt(dx * dx + dy * dy)
             i_accel = int(dist + 0.5)
             if i_accel >= len(accel):
                 i_accel = len(accel) - 1
 
-            if -mindeltathresh < dx < mindeltathresh:
-                dx = 0
-            if -mindeltathresh < dy < mindeltathresh:
-                dy = 0
+            # if -mindeltathresh < dx < mindeltathresh:
+            #     dx = 0
+            # if -mindeltathresh < dy < mindeltathresh:
+            #     dy = 0
             dx *= accel[i_accel]
             dy *= accel[i_accel]
             dx = -int(round(dx))
             dy = int(round(dy))
+            if (framenum%5) == 0:
+                print(nose_flt_x.x, nose_flt_y.x, dx, dy)
 
             if ebr:
                 click = 1
@@ -686,6 +701,17 @@ def start_face_detect_thread(detector, predictor):
     fps.stop()
     t.join()
     print(fps.elapsed(), fps.fps())
+
+
+def kalmanfilter_init():
+    f = KalmanFilter(2, 1)
+    f.x = np.array([0., 0.])                                # Current state estimate
+    f.F = np.array([[1., 1.], [0., 1.]])                    # State Transition matrix
+    f.H = np.array([[1., 0.]])                              # Measurement function
+    f.P = np.array([[1000., 0.], [0., 1000.]])              # Current state covariance matrix
+    f.R = np.array([[2.]])                                  # Measurement noise matrix
+    f.Q = Q_discrete_white_noise(dim=2, dt=.05, var=.1)    # Process noise matrix
+    return f
 
 
 def parse_arguments():

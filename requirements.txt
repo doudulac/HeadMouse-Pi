@@ -3,3 +3,5 @@ dlib ~= 19.16.0
 opencv-python~=3.4.8.29
 yappi~=1.2.5
 imutils~=0.5.3
+
+filterpy~=1.4.5
