@@ -186,11 +186,12 @@ class MyVideoCapture(object):
         while True:
             # if the thread indicator variable is set, stop the thread
             if self.stopped:
-                print("frames:", framenum)
-                try:
-                    print("orphans:", self.frame_q.qsize())
-                except NotImplementedError:
-                    pass
+                if _args_.verbose > 0:
+                    print("Frames captured:", framenum)
+                    try:
+                        print("Frames orphaned:", self.frame_q.qsize())
+                    except NotImplementedError:
+                        pass
                 return
 
             # otherwise, read the next frame from the stream
@@ -256,10 +257,16 @@ def face_detect_mp(frameq, shapesq, detector, predictor, args):
 
     r = None
     dim = None
+    firstframe = True
     for framenum, frame in iter(frameq.get, "STOP"):
-        if framenum == 1:
-            print(frame.shape)
-        if dim is None:
+        if frame is None:
+            shapesq.put_nowait((framenum, None, None))
+            continue
+
+        if firstframe:
+            firstframe = False
+            if args.verbose > 0 and mp.current_process().name[-2:] == "-1":
+                print("Frame shape:", frame.shape)
             (h, w) = frame.shape[:2]
             r = args.scalew / float(w)
             dim = (args.scalew, int(h * r))
@@ -281,7 +288,8 @@ def face_detect_mp(frameq, shapesq, detector, predictor, args):
         shapesq.put_nowait((framenum, frame, shapes))
 
     shapesq.cancel_join_thread()
-    print(mp.current_process().name, "stopped.")
+    if args.verbose > 0:
+        print(mp.current_process().name, "stopped.")
     return 0
 
 
@@ -298,8 +306,6 @@ def face_detect(demoq, detector, predictor):
     r = None
     maxwidth, maxheight = None, None
 
-    xgain, ygain = _args_.xgain, _args_.ygain
-    print(xgain, ygain)
     wrap = False
     mindeltathresh = 1
     smoothness = _args_.smoothness  # <= 8
@@ -400,8 +406,8 @@ def face_detect(demoq, detector, predictor):
         dx = pos[1][0] - pos[0][0]
         dy = pos[1][1] - pos[0][1]
 
-        dx *= xgain
-        dy *= ygain
+        dx *= _args_.xgain
+        dy *= _args_.ygain
         dx = dx * (1.0 - motionweight) + prevdx * motionweight
         dy = dy * (1.0 - motionweight) + prevdy * motionweight
         prevdx = dx
@@ -500,8 +506,6 @@ def start_face_detect_procs(detector, predictor):
     nose_flt_x = kalmanfilter_init()
     nose_flt_y = kalmanfilter_init()
 
-    xgain, ygain = _args_.xgain, _args_.ygain
-    print(xgain, ygain)
     wrap = False
     mindeltathresh = 1
     smoothness = _args_.smoothness  # <= 8
@@ -513,6 +517,8 @@ def start_face_detect_procs(detector, predictor):
              4.6, 4.7, 4.8, 4.9, 5.0,
              5.1, 5.2, 5.3, 5.4, 5.5, ]
 
+    if _args_.verbose > 0:
+        print("{} pid {}".format(mp.current_process().name, mp.current_process().pid))
     frameq = mp.Queue()
     shapesq = mp.Queue()
     workers = []
@@ -520,6 +526,8 @@ def start_face_detect_procs(detector, predictor):
         _p = mp.Process(target=face_detect_mp, args=(frameq, shapesq, detector, predictor, _args_))
         _p.start()
         workers.append(_p)
+        if _args_.verbose > 0:
+            print("{} pid {}".format(_p.name, _p.pid))
 
     rotate = None
     picam = False
@@ -606,8 +614,11 @@ def start_face_detect_procs(detector, predictor):
             dy *= accel[i_accel]
             dx = -int(round(dx))
             dy = int(round(dy))
-            if (framenum%5) == 0:
-                print(nose_flt_x.x, nose_flt_y.x, dx, dy)
+            if _args_.verbose >= 3:
+                print(
+                    "{:4} ({:8.3f}, {:8.3f}) ({:8.3f}, {:6.3f}) ({:8.3f}, {:6.3f}) ({:3}, {:5.2f}) ({:3}, {:5.2f}) {:2} {}".format(
+                        framenum, shapes[30][0], shapes[30][1], nose[0], nose_v[0], nose[1],
+                        nose_v[1], dx, ax, dy, ay, i_accel, accel[i_accel]))
 
             if ebr:
                 click = 1
@@ -685,7 +696,8 @@ def start_face_detect_procs(detector, predictor):
         print("joining", p.name)
         p.join()
 
-    print(fps.elapsed(), fps.fps())
+    if _args_.verbose > 0:
+        print("Elapsed time: {:.1f}s\n         FPS: {:.3f}".format(fps.elapsed(), fps.fps()))
 
 
 def start_face_detect_thread(detector, predictor):
@@ -752,6 +764,8 @@ def parse_arguments():
                         help="smoothness 1-8 (default: 1)")
     parser.add_argument("-u", "--usbcam", action="store_true",
                         help="Use usb camera instead of PiCamera")
+    parser.add_argument("-v", "--verbose", action="count", default=0,
+                        help="Verbosity")
     parser.add_argument("-w", "--scalew", default=320, type=int,
                         help="scale width (default: 320)")
     parser.add_argument("-x", "--xgain", default=1.0, type=float,
@@ -780,13 +794,16 @@ def main():
     if _args_.profile:
         yappi.start(builtins=True)
 
-    print("loading detector, predictor: ", end="", flush=True)
+    if _args_.verbose >= 1:
+        print("Xgain: {:.2f}\nYgain: {:.2f}".format(_args_.xgain, _args_.ygain))
+        print("loading detector, predictor: ", end="", flush=True)
     cwd = os.path.abspath(os.path.dirname(__file__))
     model_path = os.path.abspath(os.path.join(cwd, "shape_predictor_68_face_landmarks.dat"))
     # model_path = os.path.abspath(os.path.join(cwd, "shape_predictor_5_face_landmarks.dat"))
     detector = dlib.get_frontal_face_detector()
     predictor = dlib.shape_predictor(model_path)
-    print("done.")
+    if _args_.verbose >= 1:
+        print("done.")
 
     if _args_.procs > 0:
         start_face_detect_procs(detector, predictor)
