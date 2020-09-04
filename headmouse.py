@@ -19,6 +19,7 @@ from imutils import face_utils
 from imutils.video import FPS
 from filterpy.kalman import KalmanFilter
 from filterpy.common import Q_discrete_white_noise
+from scipy.linalg import block_diag
 import numpy as np
 
 
@@ -543,11 +544,13 @@ def start_face_detect_procs(detector, predictor):
                 continue
             nose = shapes[30]
 
-            nose_flt_x.predict()
-            nose_flt_y.predict()
-            nose_flt_x.update(nose[0])
-            nose_flt_y.update(nose[1])
-            nose = [nose_flt_x.x[0], nose_flt_y.x[0]]
+            if nose_flt is not None:
+                nose_flt.predict()
+                nose_flt.update(nose)
+                nose = [nose_flt.x[0][0], nose_flt.x[2][0]]
+                nose_v = [nose_flt.x[1][0], nose_flt.x[3][0]]
+            else:
+                nose_v = [0, 0]
 
             facec = feature_center(shapes)
             ebc = feature_center(shapes[17:27])
@@ -556,12 +559,15 @@ def start_face_detect_procs(detector, predictor):
 
             if pos is None:
                 pos = [nose, nose]
+                vel = [nose_v, nose_v]
                 cpos = nose
                 ebds = [ebd, ebd]
                 maxwidth, maxheight = cam.framew, cam.frameh
             else:
                 pos.append(pos.pop(0))
                 pos[-1] = nose
+                vel.append(vel.pop(0))
+                vel[-1] = nose_v
                 ebds.append(ebds.pop(0))
                 ebds[-1] = ebd
                 if eb_down is None:
@@ -575,6 +581,10 @@ def start_face_detect_procs(detector, predictor):
 
             dx = pos[1][0] - pos[0][0]
             dy = pos[1][1] - pos[0][1]
+            # dx = nose_v[0] / 2
+            # dy = nose_v[1] / 2
+            ax = vel[1][0] - vel[0][0]
+            ay = vel[1][1] - vel[0][1]
 
             dx *= xgain
             dy *= ygain
@@ -704,13 +714,27 @@ def start_face_detect_thread(detector, predictor):
 
 
 def kalmanfilter_init():
-    f = KalmanFilter(2, 1)
-    f.x = np.array([0., 0.])                                # Current state estimate
-    f.F = np.array([[1., 1.], [0., 1.]])                    # State Transition matrix
-    f.H = np.array([[1., 0.]])                              # Measurement function
-    f.P = np.array([[1000., 0.], [0., 1000.]])              # Current state covariance matrix
-    f.R = np.array([[2.]])                                  # Measurement noise matrix
-    f.Q = Q_discrete_white_noise(dim=2, dt=.05, var=.1)    # Process noise matrix
+    f = KalmanFilter(dim_x=4, dim_z=2)
+    framerate = 20
+    dt = 1 / framerate
+    # State Transition matrix
+    f.F = np.array([[1., dt, 0., 0.],
+                    [0., 1., 0., 0.],
+                    [0., 0., 1., dt],
+                    [0., 0., 0., 1.]])
+    # Process noise matrix
+    q = Q_discrete_white_noise(dim=2, dt=dt, var=5)
+    f.Q = block_diag(q, q)
+    # Measurement function
+    f.H = np.array([[1., 0., 0., 0.],
+                    [0., 0., 1., 0.]])
+    # Measurement noise matrix
+    f.R = np.array([[5., 0.],
+                    [0., 5.]])
+    # Current state estimate
+    f.x = np.array([[0., 0., 0., 0.]]).T
+    # Current state covariance matrix
+    f.P = np.eye(4) * 1000.
     return f
 
 
