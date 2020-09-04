@@ -503,8 +503,10 @@ def start_face_detect_procs(detector, predictor):
     eb_down = None
     maxwidth, maxheight = None, None
 
-    nose_flt_x = kalmanfilter_init()
-    nose_flt_y = kalmanfilter_init()
+    if _args_.filter:
+        nose_flt = kalmanfilter_init()
+    else:
+        nose_flt = None
 
     wrap = False
     mindeltathresh = 1
@@ -594,22 +596,24 @@ def start_face_detect_procs(detector, predictor):
             ax = vel[1][0] - vel[0][0]
             ay = vel[1][1] - vel[0][1]
 
-            dx *= xgain
-            dy *= ygain
-            # dx = dx * (1.0 - motionweight) + prevdx * motionweight
-            # dy = dy * (1.0 - motionweight) + prevdy * motionweight
-            # prevdx = dx
-            # prevdy = dy
+            dx *= _args_.xgain
+            dy *= _args_.ygain
+            if not _args_.filter:
+                dx = dx * (1.0 - motionweight) + prevdx * motionweight
+                dy = dy * (1.0 - motionweight) + prevdy * motionweight
+                prevdx = dx
+                prevdy = dy
 
             dist = math.sqrt(dx * dx + dy * dy)
             i_accel = int(dist + 0.5)
             if i_accel >= len(accel):
                 i_accel = len(accel) - 1
 
-            # if -mindeltathresh < dx < mindeltathresh:
-            #     dx = 0
-            # if -mindeltathresh < dy < mindeltathresh:
-            #     dy = 0
+            if not _args_.filter:
+                if -mindeltathresh < dx < mindeltathresh:
+                    dx = 0
+                if -mindeltathresh < dy < mindeltathresh:
+                    dy = 0
             dx *= accel[i_accel]
             dy *= accel[i_accel]
             dx = -int(round(dx))
@@ -693,7 +697,8 @@ def start_face_detect_procs(detector, predictor):
     for i in range(_args_.procs):
         frameq.put('STOP')
     for p in workers:
-        print("joining", p.name)
+        if _args_.verbose > 0:
+            print("Joining {}".format(p.name))
         p.join()
 
     if _args_.verbose > 0:
@@ -754,6 +759,8 @@ def parse_arguments():
     parser = argparse.ArgumentParser()
     parser.add_argument("-e", "--ebd", default=7.0, type=float,
                         help="Eyebrow distance for click (default: 7.0)")
+    parser.add_argument("-f", "--filter", action="store_true",
+                        help="enable filter")
     parser.add_argument("-p", "--profile", action="store_true",
                         help="enable profiling")
     parser.add_argument("-q", "--qmode", action="store_true",
