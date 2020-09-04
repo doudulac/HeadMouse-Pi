@@ -5,8 +5,10 @@ import math
 import multiprocessing as mp
 import os
 import queue
+import shlex
 import signal
 import struct
+import subprocess
 import sys
 import time
 from queue import Empty
@@ -531,6 +533,8 @@ def start_face_detect_procs(detector, predictor):
         if _args_.verbose > 0:
             print("{} pid {}".format(_p.name, _p.pid))
 
+    renice(-10, [p.pid for p in workers])
+
     rotate = None
     picam = False
     if _args_.onraspi:
@@ -755,6 +759,25 @@ def kalmanfilter_init():
     return f
 
 
+def renice(nice, pids):
+    if not _args_.onraspi:
+        return
+
+    if isinstance(pids, int):
+        _pids = [pids,]
+    else:
+        _pids = pids
+
+    devnull = ""
+    if _args_.verbose:
+        print("Adjusting process priority.")
+    else:
+        devnull = ">/dev/null 2>&1"
+    pstr = " ".join(["-p {}".format(p) for p in _pids])
+    cmd = shlex.split("/usr/bin/sudo /usr/bin/renice {} {} {}".format(nice, pstr, devnull))
+    subprocess.Popen(cmd).wait(timeout=5)
+
+
 def parse_arguments():
     parser = argparse.ArgumentParser()
     parser.add_argument("-e", "--ebd", default=7.0, type=float,
@@ -811,6 +834,8 @@ def main():
     predictor = dlib.shape_predictor(model_path)
     if _args_.verbose >= 1:
         print("done.")
+
+    renice(-10, mp.current_process().pid)
 
     if _args_.procs > 0:
         start_face_detect_procs(detector, predictor)
