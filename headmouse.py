@@ -537,7 +537,9 @@ def start_face_detect_procs(detector, predictor):
 
     rotate = None
     picam = False
+    fd = None
     if _args_.onraspi:
+        fd = open('/dev/hidg0', 'rb+')
         resolution = (640, 480)
         if not _args_.usbcam:
             rotate = 180
@@ -633,10 +635,11 @@ def start_face_detect_procs(detector, predictor):
                 # print('click')
             else:
                 click = 0
-            if _args_.onraspi:
+
+            if fd is not None:
                 report = struct.pack('<2b2h', 2, click, dx, dy)
-                with open('/dev/hidg0', 'rb+') as fd:
-                    fd.write(report)
+                fd.write(report)
+                fd.flush()
                 fps.update()
                 continue
 
@@ -689,10 +692,10 @@ def start_face_detect_procs(detector, predictor):
     except KeyboardInterrupt:
         pass
 
-    if _args_.onraspi:
+    if fd is not None:
         report = struct.pack('<2b2h', 2, 0, 0, 0)
-        with open('/dev/hidg0', 'rb+') as fd:
-            fd.write(report)
+        fd.write(report)
+        fd.close()
 
     fps.stop()
     cam.stop()
