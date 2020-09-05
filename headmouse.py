@@ -299,12 +299,9 @@ def face_detect(demoq, detector, predictor):
     global running
     global _args_
 
-    ebds = None
     prevdx = 0
     prevdy = 0
-    pos = None
     cpos = None
-    eb_down = None
     r = None
     maxwidth, maxheight = None, None
 
@@ -335,9 +332,11 @@ def face_detect(demoq, detector, predictor):
         webcam = MyVideoStream(src=0, resolution=(1280, 720), qmode=_args_.qmode).start()
         fps = None
 
-    x = 0
+    no_face_frames = 0
     dim = None
     framenum = 0
+    brows = Eyebrows(_args_.ebd)
+    nose = Nose(_args_.filter)
     while running:
         pframenum = framenum
         (framenum, frame) = webcam.read()
@@ -360,8 +359,8 @@ def face_detect(demoq, detector, predictor):
         sgframe = cv2.resize(gframe, dim, interpolation=cv2.INTER_AREA)
         faces = detector(sgframe)
         if len(faces) == 0:
-            x += 1
-            print(x, 'no face', end='\r')
+            no_face_frames += 1
+            print(no_face_frames, 'no face', end='\r')
             continue
 
         face = dlib.rectangle(int(faces[0].left() / r),
@@ -381,32 +380,11 @@ def face_detect(demoq, detector, predictor):
         # moutho 48,59
         # mouthi 60,67
 
-        nose = shapes[30]
-        facec = feature_center(shapes)
-        ebc = feature_center(shapes[17:27])
-        eyec = feature_center(shapes[36:48])
-        ebd = point_distance(ebc, eyec)
+        nose.update(shapes)
+        brows.update(shapes)
 
-        if pos is None:
-            pos = [nose, nose]
-            cpos = nose
-            ebds = [ebd, ebd]
-        else:
-            pos.append(pos.pop(0))
-            pos[-1] = nose
-            ebds.append(ebds.pop(0))
-            ebds[-1] = ebd
-            if eb_down is None:
-                eb_down = sum(ebds) / len(ebds)
-
-        ebda = sum(ebds) / len(ebds)
-        if eb_down is not None and ebda - eb_down > _args_.ebd:
-            ebr = True
-        else:
-            ebr = False
-
-        dx = pos[1][0] - pos[0][0]
-        dy = pos[1][1] - pos[0][1]
+        dx = nose.dx
+        dy = nose.dy
 
         dx *= _args_.xgain
         dy *= _args_.ygain
@@ -424,16 +402,17 @@ def face_detect(demoq, detector, predictor):
             dx = 0
         if -mindeltathresh < dy < mindeltathresh:
             dy = 0
-        # print(i_accel)
+
         dx *= accel[i_accel]
         dy *= accel[i_accel]
         dx = -int(round(dx))
         dy = int(round(dy))
 
         if _args_.onraspi:
-            if ebr:
+            if brows.raised:
                 click = 1
-                # print('click')
+                if _args_.verbose >= 3:
+                    print('click')
             else:
                 click = 0
             report = struct.pack('<2b2h', 2, click, dx, dy)
@@ -443,8 +422,11 @@ def face_detect(demoq, detector, predictor):
             continue
 
         # On dev system, draw stuff and simulate pointer
-        cpos[0] += dx
-        cpos[1] += dy
+        try:
+            cpos[0] += dx
+            cpos[1] += dy
+        except ValueError:
+            cpos = nose.position
 
         if cpos[0] > maxwidth:
             if wrap:
@@ -469,8 +451,8 @@ def face_detect(demoq, detector, predictor):
 
         cv2.circle(frame, (int(cpos[0]), int(cpos[1])), 4, (0, 0, 255), -1)
 
-        cv2.putText(frame, str((ebd, ebda, eb_down, ebr)), (90, 130),
-                    cv2.FONT_HERSHEY_DUPLEX, 0.9, (147, 58, 31), 1)
+        # cv2.putText(frame, str((ebd, ebda, eb_down, ebr)), (90, 130),
+        #             cv2.FONT_HERSHEY_DUPLEX, 0.9, (147, 58, 31), 1)
         # cv2.putText(frame, "brows: " + str(t2), (90, 165),
         #             cv2.FONT_HERSHEY_DUPLEX, 0.9, (147, 58, 31), 1)
         cv2.putText(frame, "nose: " + str(nose), (90, 200),
@@ -480,6 +462,7 @@ def face_detect(demoq, detector, predictor):
         cv2.putText(frame, "ptr : " + str((int(cpos[0]), int(cpos[1]))), (90, 270),
                     cv2.FONT_HERSHEY_DUPLEX, 0.9, (147, 58, 31), 1)
 
+        facec = feature_center(shapes)
         draw_landmarks(frame, shapes, facec)
         # frame = face_utils.visualize_facial_landmarks(frame, shapes, [(0,255,0),]*8)
         demoq.put(frame)
@@ -496,19 +479,112 @@ def face_detect(demoq, detector, predictor):
         print(fps.elapsed(), fps.fps())
 
 
+class Eyebrows(object):
+    def __init__(self, threshold):
+        self.threshold = threshold
+
+        self._ebds = None
+        self._pos_down = None
+        self._position = None
+        self._raised = False
+
+    def update(self, shapes):
+        if shapes is None:
+            return
+        ebc = feature_center(shapes[17:27])
+        eyec = feature_center(shapes[36:48])
+        ebd = point_distance(ebc, eyec)
+        if self._ebds is None:
+            self._ebds = [ebd, ebd]
+        else:
+            self._ebds.append(self._ebds.pop(0))
+            self._ebds[-1] = ebd
+            if self._pos_down is None:
+                self._pos_down = sum(self._ebds) / len(self._ebds)
+
+        self._position = sum(self._ebds) / len(self._ebds)
+        if self._pos_down is not None:
+            self._raised = self._position - self._pos_down > self.threshold
+
+    @property
+    def position(self):
+        return self._position
+
+    @property
+    def raised(self):
+        return self._raised
+
+
+class Nose(object):
+    def __init__(self, use_kalman=False):
+        self._positions = None
+        self._dx = None
+        self._dy = None
+        self._vels = None
+        self._ax = None
+        self._ay = None
+        if use_kalman:
+            self._kf = kalmanfilter_init()
+        else:
+            self._kf = None
+
+    def update(self, shapes):
+        if shapes is None:
+            return
+        nose_raw = shapes[30]
+        if self._kf is None:
+            nose = nose_raw
+            vel = [0, 0]
+        else:
+            self._kf.predict()
+            self._kf.update(nose_raw)
+            nose = [self._kf.x[0][0], self._kf.x[2][0]]
+            vel = [self._kf.x[1][0], self._kf.x[3][0]]
+
+        if self._positions is None:
+            self._positions = [nose, nose]
+            self._vels = [vel, vel]
+        else:
+            self._positions.append(self._positions.pop(0))
+            self._positions[-1] = nose
+            self._vels.append(self._vels.pop(0))
+            self._vels[-1] = vel
+
+        self._dx = self.position[0] - self.prev_position[0]
+        self._dy = self.position[1] - self.prev_position[1]
+        self._ax = self.vel[0] - self.prev_vel[0]
+        self._ay = self.vel[1] - self.prev_vel[1]
+
+    @property
+    def dx(self):
+        return self._dx
+
+    @property
+    def dy(self):
+        return self._dy
+
+    @property
+    def prev_position(self):
+        return self._positions[0]
+
+    @property
+    def position(self):
+        return self._positions[1]
+
+    @property
+    def prev_vel(self):
+        return self._vels[0]
+
+    @property
+    def vel(self):
+        return self._vels[1]
+
+
 def start_face_detect_procs(detector, predictor):
-    ebds = None
     prevdx = 0
     prevdy = 0
-    pos = None
     cpos = None
-    eb_down = None
     maxwidth, maxheight = None, None
-
-    if _args_.filter:
-        nose_flt = kalmanfilter_init()
-    else:
-        nose_flt = None
 
     wrap = False
     mindeltathresh = 1
@@ -549,6 +625,9 @@ def start_face_detect_procs(detector, predictor):
 
     cam = MyVideoStream(usePiCamera=picam, resolution=resolution, frame_q=frameq,
                         rotation=rotate).start()
+
+    brows = Eyebrows(_args_.ebd)
+    nose = Nose(_args_.filter)
     fps = FPS()
     firstframe = True
     try:
@@ -556,57 +635,18 @@ def start_face_detect_procs(detector, predictor):
             framenum, frame, shapes = shapesq.get()
             if firstframe:
                 firstframe = False
+                maxwidth, maxheight = cam.framew, cam.frameh
                 fps.start()
             if shapes is None:
-                if nose_flt is None:
+                if _args_.filter is None:
                     fps.update()
                     continue
-                nose = None
-            else:
-                nose = shapes[30]
 
-            if nose_flt is not None:
-                nose_flt.predict()
-                nose_flt.update(nose)
-                nose = [nose_flt.x[0][0], nose_flt.x[2][0]]
-                nose_v = [nose_flt.x[1][0], nose_flt.x[3][0]]
-            else:
-                nose_v = [0, 0]
+            brows.update(shapes)
+            nose.update(shapes)
 
-            facec = feature_center(shapes)
-            ebc = feature_center(shapes[17:27])
-            eyec = feature_center(shapes[36:48])
-            ebd = point_distance(ebc, eyec)
-
-            if pos is None:
-                pos = [nose, nose]
-                vel = [nose_v, nose_v]
-                cpos = nose
-                ebds = [ebd, ebd]
-                maxwidth, maxheight = cam.framew, cam.frameh
-            else:
-                pos.append(pos.pop(0))
-                pos[-1] = nose
-                vel.append(vel.pop(0))
-                vel[-1] = nose_v
-                ebds.append(ebds.pop(0))
-                ebds[-1] = ebd
-                if eb_down is None:
-                    eb_down = sum(ebds) / len(ebds)
-
-            ebda = sum(ebds) / len(ebds)
-            if eb_down is not None and ebda - eb_down > _args_.ebd:
-                ebr = True
-            else:
-                ebr = False
-
-            dx = pos[1][0] - pos[0][0]
-            dy = pos[1][1] - pos[0][1]
-            # dx = nose_v[0] / 2
-            # dy = nose_v[1] / 2
-            ax = vel[1][0] - vel[0][0]
-            ay = vel[1][1] - vel[0][1]
-
+            dx = nose.dx
+            dy = nose.dy
             dx *= _args_.xgain
             dy *= _args_.ygain
             if not _args_.filter:
@@ -635,7 +675,7 @@ def start_face_detect_procs(detector, predictor):
                         framenum, shapes[30][0], shapes[30][1], nose[0], nose_v[0], nose[1],
                         nose_v[1], dx, ax, dy, ay, i_accel, accel[i_accel]))
 
-            if ebr:
+            if brows.raised:
                 click = 1
                 if _args_.verbose >= 3:
                     print('click')
@@ -650,8 +690,11 @@ def start_face_detect_procs(detector, predictor):
                 continue
 
             # On dev system, draw stuff and simulate pointer
-            cpos[0] += dx
-            cpos[1] += dy
+            try:
+                cpos[0] += dx
+                cpos[1] += dy
+            except TypeError:
+                cpos = nose.position
 
             if cpos[0] > maxwidth:
                 if wrap:
@@ -676,8 +719,8 @@ def start_face_detect_procs(detector, predictor):
 
             cv2.circle(frame, (int(cpos[0]), int(cpos[1])), 4, (0, 0, 255), -1)
 
-            cv2.putText(frame, str((ebd, ebda, eb_down, ebr)), (90, 130),
-                        cv2.FONT_HERSHEY_DUPLEX, 0.9, (147, 58, 31), 1)
+            # cv2.putText(frame, str((ebd, ebda, eb_down, ebr)), (90, 130),
+            #             cv2.FONT_HERSHEY_DUPLEX, 0.9, (147, 58, 31), 1)
             # cv2.putText(frame, "brows: " + str(t2), (90, 165),
             #             cv2.FONT_HERSHEY_DUPLEX, 0.9, (147, 58, 31), 1)
             cv2.putText(frame, "nose: " + str(nose), (90, 200),
@@ -687,6 +730,7 @@ def start_face_detect_procs(detector, predictor):
             cv2.putText(frame, "ptr : " + str((int(cpos[0]), int(cpos[1]))), (90, 270),
                         cv2.FONT_HERSHEY_DUPLEX, 0.9, (147, 58, 31), 1)
 
+            facec = feature_center(shapes)
             draw_landmarks(frame, shapes, facec)
             # frame = face_utils.visualize_facial_landmarks(frame, shapes, [(0,255,0),]*8)
             cv2.imshow("Demo", frame)
