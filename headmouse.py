@@ -770,7 +770,7 @@ def renice(nice, pids):
         return
 
     if isinstance(pids, int):
-        _pids = [pids,]
+        _pids = [pids, ]
     else:
         _pids = pids
 
