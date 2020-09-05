@@ -558,9 +558,12 @@ def start_face_detect_procs(detector, predictor):
                 firstframe = False
                 fps.start()
             if shapes is None:
-                fps.update()
-                continue
-            nose = shapes[30]
+                if nose_flt is None:
+                    fps.update()
+                    continue
+                nose = None
+            else:
+                nose = shapes[30]
 
             if nose_flt is not None:
                 nose_flt.predict()
