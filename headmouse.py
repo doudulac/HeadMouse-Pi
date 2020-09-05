@@ -550,10 +550,12 @@ def start_face_detect_procs(detector, predictor):
     cam = MyVideoStream(usePiCamera=picam, resolution=resolution, frame_q=frameq,
                         rotation=rotate).start()
     fps = FPS()
+    firstframe = True
     try:
         while True:
             framenum, frame, shapes = shapesq.get()
-            if framenum == 1:
+            if firstframe:
+                firstframe = False
                 fps.start()
             if shapes is None:
                 fps.update()
