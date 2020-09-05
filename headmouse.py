@@ -632,7 +632,8 @@ def start_face_detect_procs(detector, predictor):
 
             if ebr:
                 click = 1
-                # print('click')
+                if _args_.verbose >= 3:
+                    print('click')
             else:
                 click = 0
 
