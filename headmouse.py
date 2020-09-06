@@ -10,7 +10,6 @@ import signal
 import struct
 import subprocess
 import sys
-import time
 from queue import Empty
 from threading import Thread
 
@@ -20,7 +19,7 @@ import yappi
 from imutils import face_utils
 from imutils.video import FPS
 from filterpy.kalman import KalmanFilter
-from filterpy.common import Q_discrete_white_noise
+from filterpy.common.discretization import Q_discrete_white_noise
 from scipy.linalg import block_diag
 import numpy as np
 
@@ -64,6 +63,9 @@ class MyVideoStream:
 
     def join(self):
         self.stream.join()
+
+    def fps(self):
+        self.stream.fps()
 
 
 class MyPiVideoStream:
@@ -147,6 +149,9 @@ class MyPiVideoStream:
     def join(self):
         self.thread.join()
 
+    def fps(self):
+        return self.camera.framerate
+
 
 class MyVideoCapture(object):
     def __init__(self, src=0, resolution=(None, None), framerate=None, frame_q=None,
@@ -192,7 +197,7 @@ class MyVideoCapture(object):
                     print("Frames captured:", framenum)
                     try:
                         print("Frames orphaned:", self.frame_q.qsize())
-                    except NotImplementedError:
+                    except (NotImplementedError, AttributeError):
                         pass
                 return
 
@@ -226,8 +231,317 @@ class MyVideoCapture(object):
     def join(self):
         self.thread.join()
 
+    def fps(self):
+        return self.stream.get(cv2.CAP_PROP_FPS)
+
+
+class Eyebrows(object):
+    def __init__(self, threshold):
+        self.threshold = threshold
+
+        self._ebds = None
+        self._pos_down = None
+        self._position = None
+        self._raised = False
+
+    def update(self, shapes):
+        if shapes is None:
+            return
+
+        # jaw 0,16
+        # rbrow 17,21
+        # lbrow 22,26
+        # nose 27,30
+        # nostr 31,35
+        # reye 36,41
+        # leye 42,47
+        # moutho 48,59
+        # mouthi 60,67
+
+        ebc = feature_center(shapes[17:27])
+        eyec = feature_center(shapes[36:48])
+        ebd = point_distance(ebc, eyec)
+        if self._ebds is None:
+            self._ebds = [ebd, ebd]
+        else:
+            self._ebds.append(self._ebds.pop(0))
+            self._ebds[-1] = ebd
+            if self._pos_down is None:
+                self._pos_down = sum(self._ebds) / len(self._ebds)
+
+        self._position = sum(self._ebds) / len(self._ebds)
+        if self._pos_down is not None:
+            self._raised = self._position - self._pos_down > self.threshold
+
+    @property
+    def position(self):
+        return self._position
+
+    @property
+    def pos_down(self):
+        return self._pos_down
+
+    @property
+    def raised(self):
+        return self._raised
+
+
+class Nose(object):
+    def __init__(self, use_kalman=False, kalman_dt=None):
+        self._positions = None
+        self.nose_raw = [0, 0]
+        self._dx = None
+        self._dy = None
+        self._vels = None
+        self._ax = None
+        self._ay = None
+        if use_kalman:
+            self._kf = kalmanfilter_init(kalman_dt)
+        else:
+            self._kf = None
+
+    def update(self, shapes):
+        # jaw 0,16
+        # rbrow 17,21
+        # lbrow 22,26
+        # nose 27,30
+        # nostr 31,35
+        # reye 36,41
+        # leye 42,47
+        # moutho 48,59
+        # mouthi 60,67
+        if shapes is not None:
+            self.nose_raw = shapes[30]
+        else:
+            self.nose_raw = [0, 0]
+
+        if self._kf is None:
+            nose = self.nose_raw
+            vel = [0, 0]
+        else:
+            self._kf.predict()
+            self._kf.update(self.nose_raw)
+            nose = [self._kf.x[0][0], self._kf.x[2][0]]
+            vel = [self._kf.x[1][0], self._kf.x[3][0]]
+
+        if self._positions is None:
+            self._positions = [nose, nose]
+            self._vels = [vel, vel]
+        else:
+            self._positions.append(self._positions.pop(0))
+            self._positions[-1] = nose
+            self._vels.append(self._vels.pop(0))
+            self._vels[-1] = vel
+
+        self._dx = self.position[0] - self.prev_position[0]
+        self._dy = self.position[1] - self.prev_position[1]
+        self._ax = self.vel[0] - self.prev_vel[0]
+        self._ay = self.vel[1] - self.prev_vel[1]
+
+    @property
+    def ax(self):
+        return self._ax
+
+    @property
+    def ay(self):
+        return self._ay
+
+    @property
+    def dx(self):
+        return self._dx
+
+    @property
+    def dy(self):
+        return self._dy
+
+    @property
+    def prev_position(self):
+        return self._positions[0]
+
+    @property
+    def position(self):
+        return self._positions[1]
+
+    @property
+    def prev_vel(self):
+        return self._vels[0]
+
+    @property
+    def vel(self):
+        return self._vels[1]
+
+    @property
+    def using_kfilter(self):
+        return self._kf is not None
+
+
+class MousePointer(object):
+    def __init__(self, xgain=None, ygain=None, smoothness=None, mindeltathresh=None, verbose=None):
+        self._dx = None
+        self._dy = None
+        self.cpos = None
+        self.maxheight = None
+        self.maxwidth = None
+        self.wrap = False
+        self.xgain = xgain if xgain is not None else 1.0
+        self.ygain = ygain if ygain is not None else 1.0
+        self.wrap = False
+        self.mindeltathresh = mindeltathresh if mindeltathresh is not None else 1
+        self._smoothness = None
+        self._motionweight = None
+        self.set_smoothness(smoothness)
+        self._prevdx = 0
+        self._prevdy = 0
+        self.verbose = verbose if verbose is not None else 0
+        self._fd = None
+        self.open_hidg()
+        self.i_accel = None
+        self.accel = [1.0, 1.0, 1.8, 1.9, 2.0,
+                      2.0, 2.0, 2.0, 2.1, 2.2,
+                      2.3, 2.4, 2.5, 3.0, 4.0,
+                      4.1, 4.2, 4.3, 4.4, 4.5,
+                      4.6, 4.7, 4.8, 4.9, 5.0,
+                      5.1, 5.2, 5.3, 5.4, 5.5, ]
+
+    def open_hidg(self):
+        if self._fd is not None:
+            return self._fd
+        try:
+            self._fd = open('/dev/hidg0', 'rb+')
+        except FileNotFoundError:
+            self._fd = None
+
+    def close_hidg(self):
+        if self._fd is not None:
+            self._fd.close()
+            self._fd = None
+
+    def update(self, nose, brows):
+        dx = nose.dx
+        dy = nose.dy
+        dx *= self.xgain
+        dy *= self.ygain
+        if not nose.using_kfilter:
+            dx = dx * (1.0 - self._motionweight) + self._prevdx * self._motionweight
+            dy = dy * (1.0 - self._motionweight) + self._prevdy * self._motionweight
+            self._prevdx = dx
+            self._prevdy = dy
+
+        dist = math.sqrt(dx * dx + dy * dy)
+        self.i_accel = int(dist + 0.5)
+        if self.i_accel >= len(self.accel):
+            self.i_accel = len(self.accel) - 1
+
+        if not nose.using_kfilter:
+            if -self.mindeltathresh < dx < self.mindeltathresh:
+                dx = 0
+            if -self.mindeltathresh < dy < self.mindeltathresh:
+                dy = 0
+        dx *= self.accel[self.i_accel]
+        dy *= self.accel[self.i_accel]
+        dx = -int(round(dx))
+        dy = int(round(dy))
+        self._dx = dx
+        self._dy = dy
+
+        if brows.raised:
+            click = 1
+        else:
+            click = 0
+
+        self.send(click, dx, dy)
+        if self._fd is not None:
+            return
+
+        try:
+            self.cpos[0] += dx
+            self.cpos[1] += dy
+        except TypeError:
+            self.cpos = nose.position
+
+        if self.cpos[0] > self.maxwidth:
+            if self.wrap:
+                self.cpos[0] -= self.maxwidth
+            else:
+                self.cpos[0] = self.maxwidth
+        if self.cpos[1] > self.maxheight:
+            if self.wrap:
+                self.cpos[1] -= self.maxheight
+            else:
+                self.cpos[1] = self.maxheight
+        if self.cpos[0] < 0:
+            if self.wrap:
+                self.cpos[0] += self.maxwidth
+            else:
+                self.cpos[0] = 0
+        if self.cpos[1] < 0:
+            if self.wrap:
+                self.cpos[1] += self.maxheight
+            else:
+                self.cpos[1] = 0
+
+    def send(self, click, dx, dy):
+        if self.verbose >= 3 and click:
+            print('click')
+
+        if self._fd is not None:
+            report = struct.pack('<2b2h', 2, click, dx, dy)
+            self._fd.write(report)
+            self._fd.flush()
+
+    def set_smoothness(self, value):
+        if value is None or value < 0:
+            value = 0
+        elif value > 8:
+            value = 8
+
+        self._smoothness = value
+        self._motionweight = math.log10(float(self._smoothness) + 1)
+
+    @property
+    def dx(self):
+        return self._dx
+
+    @property
+    def dy(self):
+        return self._dy
+
+    @property
+    def smoothness(self):
+        return self._smoothness
+
+    @property
+    def motionweight(self):
+        return self._motionweight
+
+
+def annotate_frame(frame, shapes, nose, brows, mouse):
+    cv2.circle(frame, (int(mouse.cpos[0]), int(mouse.cpos[1])), 4, (0, 0, 255), -1)
+
+    try:
+        _d = brows.position - brows.pos_down
+    except TypeError:
+        _d = 0
+    cv2.putText(frame, str((brows.pos_down, brows.position, _d, brows.raised)), (90, 130),
+                cv2.FONT_HERSHEY_DUPLEX, 0.9, (147, 58, 31), 1)
+    cv2.putText(frame, "brows: " + str(brows.position), (90, 165),
+                cv2.FONT_HERSHEY_DUPLEX, 0.9, (147, 58, 31), 1)
+    cv2.putText(frame, "nose: " + str(nose.position), (90, 200),
+                cv2.FONT_HERSHEY_DUPLEX, 0.9, (147, 58, 31), 1)
+    cv2.putText(frame, "dxdy: " + str((mouse.dx, mouse.dy)), (90, 235),
+                cv2.FONT_HERSHEY_DUPLEX, 0.9, (147, 58, 31), 1)
+    cv2.putText(frame, "ptr : " + str((int(mouse.cpos[0]), int(mouse.cpos[1]))), (90, 270),
+                cv2.FONT_HERSHEY_DUPLEX, 0.9, (147, 58, 31), 1)
+
+    facec = feature_center(shapes)
+    draw_landmarks(frame, shapes, facec)
+    # frame = face_utils.visualize_facial_landmarks(frame, shapes, [(0,255,0),]*8)
+    return frame
+
 
 def draw_landmarks(frame, shapes, center):
+    if shapes is None:
+        return
     for (i, j) in face_utils.FACIAL_LANDMARKS_68_IDXS.values():
         pts = shapes[i:j]
         for _l in range(1, len(pts)):
@@ -237,21 +551,6 @@ def draw_landmarks(frame, shapes, center):
             if _l == 1:
                 cv2.line(frame, center, p1, (0, 255, 255))
             cv2.line(frame, center, p2, (0, 255, 255))
-
-
-def feature_center(shapes):
-    centx, centy = 0, 0
-    for x, y in shapes:
-        centx += x
-        centy += y
-    centx = int(centx / len(shapes))
-    centy = int(centy / len(shapes))
-    return centx, centy
-
-
-def point_distance(p1, p2):
-    d = math.sqrt((p1[0] - p2[0]) ** 2 + (p1[1] - p2[1]) ** 2)
-    return d
 
 
 def face_detect_mp(frameq, shapesq, detector, predictor, args):
@@ -267,11 +566,11 @@ def face_detect_mp(frameq, shapesq, detector, predictor, args):
 
         if firstframe:
             firstframe = False
-            if args.verbose > 0 and mp.current_process().name[-2:] == "-1":
-                print("Frame shape:", frame.shape)
             (h, w) = frame.shape[:2]
             r = args.scalew / float(w)
             dim = (args.scalew, int(h * r))
+            if args.verbose > 0 and mp.current_process().name[-2:] == "-1":
+                print("Frame shape: {}\nFrame scaled: {}".format(frame.shape, dim))
 
         gframe = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         sgframe = cv2.resize(gframe, dim, interpolation=cv2.INTER_AREA)
@@ -299,323 +598,12 @@ def face_detect(demoq, detector, predictor):
     global running
     global _args_
 
-    prevdx = 0
-    prevdy = 0
-    cpos = None
     r = None
-    maxwidth, maxheight = None, None
-
-    wrap = False
-    mindeltathresh = 1
-    smoothness = _args_.smoothness  # <= 8
-    motionweight = math.log10(float(smoothness) + 1)
-    accel = [1.0, 1.0, 1.5, 1.6, 1.7,
-             1.8, 1.9, 2.0, 2.1, 2.2,
-             2.3, 2.4, 2.5, 3.0, 4.0,
-             4.1, 4.2, 4.3, 4.4, 4.5,
-             4.6, 4.7, 4.8, 4.9, 5.0,
-             5.1, 5.2, 5.3, 5.4, 5.5, ]
-
-    if _args_.onraspi:
-        if _args_.usbcam:
-            rotate = None
-            resolution = (640, 480)
-        else:
-            rotate = 180
-            resolution = (640, 480)
-        webcam = MyVideoStream(usePiCamera=not _args_.usbcam, resolution=resolution,
-                               qmode=_args_.qmode, rotation=rotate).start()
-        time.sleep(2)
-        fps = FPS()
-        fps.start()
-    else:
-        webcam = MyVideoStream(src=0, resolution=(1280, 720), qmode=_args_.qmode).start()
-        fps = None
-
-    no_face_frames = 0
-    dim = None
-    framenum = 0
-    brows = Eyebrows(_args_.ebd)
-    nose = Nose(_args_.filter)
-    while running:
-        pframenum = framenum
-        (framenum, frame) = webcam.read()
-        if frame is None or framenum == pframenum:
-            continue
-
-        if dim is None:
-            (h, w) = frame.shape[:2]
-            maxheight, maxwidth = (h, w)
-            r = _args_.scalew / float(w)
-            dim = (_args_.scalew, int(h * r))
-            # widthratio = 1440 / w
-            # heightratio = 900 / h
-            # xgain *= widthratio
-            # ygain *= heightratio
-            # print(frame.shape, dim, (widthratio, heightratio))
-            print(frame.shape, dim)
-
-        gframe = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        sgframe = cv2.resize(gframe, dim, interpolation=cv2.INTER_AREA)
-        faces = detector(sgframe)
-        if len(faces) == 0:
-            no_face_frames += 1
-            print(no_face_frames, 'no face', end='\r')
-            continue
-
-        face = dlib.rectangle(int(faces[0].left() / r),
-                              int(faces[0].top() / r),
-                              int(faces[0].right() / r),
-                              int(faces[0].bottom() / r))
-        shapes = predictor(gframe, face)
-        shapes = face_utils.shape_to_np(shapes)
-
-        # jaw 0,16
-        # rbrow 17,21
-        # lbrow 22,26
-        # nose 27,30
-        # nostr 31,35
-        # reye 36,41
-        # leye 42,47
-        # moutho 48,59
-        # mouthi 60,67
-
-        nose.update(shapes)
-        brows.update(shapes)
-
-        dx = nose.dx
-        dy = nose.dy
-
-        dx *= _args_.xgain
-        dy *= _args_.ygain
-        dx = dx * (1.0 - motionweight) + prevdx * motionweight
-        dy = dy * (1.0 - motionweight) + prevdy * motionweight
-        prevdx = dx
-        prevdy = dy
-
-        dist = math.sqrt(dx * dx + dy * dy)
-        i_accel = int(dist + 0.5)
-        if i_accel >= len(accel):
-            i_accel = len(accel) - 1
-
-        if -mindeltathresh < dx < mindeltathresh:
-            dx = 0
-        if -mindeltathresh < dy < mindeltathresh:
-            dy = 0
-
-        dx *= accel[i_accel]
-        dy *= accel[i_accel]
-        dx = -int(round(dx))
-        dy = int(round(dy))
-
-        if _args_.onraspi:
-            if brows.raised:
-                click = 1
-                if _args_.verbose >= 3:
-                    print('click')
-            else:
-                click = 0
-            report = struct.pack('<2b2h', 2, click, dx, dy)
-            with open('/dev/hidg0', 'rb+') as fd:
-                fd.write(report)
-            fps.update()
-            continue
-
-        # On dev system, draw stuff and simulate pointer
-        try:
-            cpos[0] += dx
-            cpos[1] += dy
-        except ValueError:
-            cpos = nose.position
-
-        if cpos[0] > maxwidth:
-            if wrap:
-                cpos[0] -= maxwidth
-            else:
-                cpos[0] = maxwidth
-        if cpos[1] > maxheight:
-            if wrap:
-                cpos[1] -= maxheight
-            else:
-                cpos[1] = maxheight
-        if cpos[0] < 0:
-            if wrap:
-                cpos[0] += maxwidth
-            else:
-                cpos[0] = 0
-        if cpos[1] < 0:
-            if wrap:
-                cpos[1] += maxheight
-            else:
-                cpos[1] = 0
-
-        cv2.circle(frame, (int(cpos[0]), int(cpos[1])), 4, (0, 0, 255), -1)
-
-        # cv2.putText(frame, str((ebd, ebda, eb_down, ebr)), (90, 130),
-        #             cv2.FONT_HERSHEY_DUPLEX, 0.9, (147, 58, 31), 1)
-        # cv2.putText(frame, "brows: " + str(t2), (90, 165),
-        #             cv2.FONT_HERSHEY_DUPLEX, 0.9, (147, 58, 31), 1)
-        cv2.putText(frame, "nose: " + str(nose), (90, 200),
-                    cv2.FONT_HERSHEY_DUPLEX, 0.9, (147, 58, 31), 1)
-        cv2.putText(frame, "dxdy: " + str((dx, dy)), (90, 235),
-                    cv2.FONT_HERSHEY_DUPLEX, 0.9, (147, 58, 31), 1)
-        cv2.putText(frame, "ptr : " + str((int(cpos[0]), int(cpos[1]))), (90, 270),
-                    cv2.FONT_HERSHEY_DUPLEX, 0.9, (147, 58, 31), 1)
-
-        facec = feature_center(shapes)
-        draw_landmarks(frame, shapes, facec)
-        # frame = face_utils.visualize_facial_landmarks(frame, shapes, [(0,255,0),]*8)
-        demoq.put(frame)
-
-    if _args_.onraspi:
-        report = struct.pack('<2b2h', 2, 0, 0, 0)
-        with open('/dev/hidg0', 'rb+') as fd:
-            fd.write(report)
-
-    webcam.stop()
-    print('')
-    if fps is not None:
-        fps.stop()
-        print(fps.elapsed(), fps.fps())
-
-
-class Eyebrows(object):
-    def __init__(self, threshold):
-        self.threshold = threshold
-
-        self._ebds = None
-        self._pos_down = None
-        self._position = None
-        self._raised = False
-
-    def update(self, shapes):
-        if shapes is None:
-            return
-        ebc = feature_center(shapes[17:27])
-        eyec = feature_center(shapes[36:48])
-        ebd = point_distance(ebc, eyec)
-        if self._ebds is None:
-            self._ebds = [ebd, ebd]
-        else:
-            self._ebds.append(self._ebds.pop(0))
-            self._ebds[-1] = ebd
-            if self._pos_down is None:
-                self._pos_down = sum(self._ebds) / len(self._ebds)
-
-        self._position = sum(self._ebds) / len(self._ebds)
-        if self._pos_down is not None:
-            self._raised = self._position - self._pos_down > self.threshold
-
-    @property
-    def position(self):
-        return self._position
-
-    @property
-    def raised(self):
-        return self._raised
-
-
-class Nose(object):
-    def __init__(self, use_kalman=False):
-        self._positions = None
-        self._dx = None
-        self._dy = None
-        self._vels = None
-        self._ax = None
-        self._ay = None
-        if use_kalman:
-            self._kf = kalmanfilter_init()
-        else:
-            self._kf = None
-
-    def update(self, shapes):
-        if shapes is None:
-            return
-        nose_raw = shapes[30]
-        if self._kf is None:
-            nose = nose_raw
-            vel = [0, 0]
-        else:
-            self._kf.predict()
-            self._kf.update(nose_raw)
-            nose = [self._kf.x[0][0], self._kf.x[2][0]]
-            vel = [self._kf.x[1][0], self._kf.x[3][0]]
-
-        if self._positions is None:
-            self._positions = [nose, nose]
-            self._vels = [vel, vel]
-        else:
-            self._positions.append(self._positions.pop(0))
-            self._positions[-1] = nose
-            self._vels.append(self._vels.pop(0))
-            self._vels[-1] = vel
-
-        self._dx = self.position[0] - self.prev_position[0]
-        self._dy = self.position[1] - self.prev_position[1]
-        self._ax = self.vel[0] - self.prev_vel[0]
-        self._ay = self.vel[1] - self.prev_vel[1]
-
-    @property
-    def dx(self):
-        return self._dx
-
-    @property
-    def dy(self):
-        return self._dy
-
-    @property
-    def prev_position(self):
-        return self._positions[0]
-
-    @property
-    def position(self):
-        return self._positions[1]
-
-    @property
-    def prev_vel(self):
-        return self._vels[0]
-
-    @property
-    def vel(self):
-        return self._vels[1]
-
-
-def start_face_detect_procs(detector, predictor):
-    prevdx = 0
-    prevdy = 0
-    cpos = None
-    maxwidth, maxheight = None, None
-
-    wrap = False
-    mindeltathresh = 1
-    smoothness = _args_.smoothness  # <= 8
-    motionweight = math.log10(float(smoothness) + 1)
-    accel = [1.0, 1.0, 1.5, 1.6, 1.7,
-             1.8, 1.9, 2.0, 2.1, 2.2,
-             2.3, 2.4, 2.5, 3.0, 4.0,
-             4.1, 4.2, 4.3, 4.4, 4.5,
-             4.6, 4.7, 4.8, 4.9, 5.0,
-             5.1, 5.2, 5.3, 5.4, 5.5, ]
-
-    if _args_.verbose > 0:
-        print("{} pid {}".format(mp.current_process().name, mp.current_process().pid))
-    frameq = mp.Queue()
-    shapesq = mp.Queue()
-    workers = []
-    for _ in range(_args_.procs):
-        _p = mp.Process(target=face_detect_mp, args=(frameq, shapesq, detector, predictor, _args_))
-        _p.start()
-        workers.append(_p)
-        if _args_.verbose > 0:
-            print("{} pid {}".format(_p.name, _p.pid))
-
-    renice(-10, [p.pid for p in workers])
-
     rotate = None
     picam = False
-    fd = None
+    frameq = queue.Queue() if _args_.qmode else None
+    fps = FPS()
     if _args_.onraspi:
-        fd = open('/dev/hidg0', 'rb+')
         resolution = (640, 480)
         if not _args_.usbcam:
             rotate = 180
@@ -626,171 +614,99 @@ def start_face_detect_procs(detector, predictor):
     cam = MyVideoStream(usePiCamera=picam, resolution=resolution, frame_q=frameq,
                         rotation=rotate).start()
 
+    no_face_frames = 0
+    dim = None
+    framenum = 0
     brows = Eyebrows(_args_.ebd)
-    nose = Nose(_args_.filter)
-    fps = FPS()
+    nose = Nose(_args_.filter, 1 / cam.fps())
+    mouse = MousePointer(xgain=_args_.xgain, ygain=_args_.ygain, smoothness=_args_.smoothness,
+                         mindeltathresh=1, verbose=_args_.verbose)
     firstframe = True
-    try:
-        while True:
-            framenum, frame, shapes = shapesq.get()
-            if firstframe:
-                firstframe = False
-                maxwidth, maxheight = cam.framew, cam.frameh
-                fps.start()
-            if shapes is None:
-                if _args_.filter is None:
-                    fps.update()
-                    continue
+    while running:
+        pframenum = framenum
+        (framenum, frame) = cam.read()
+        if frame is None or framenum == pframenum:
+            continue
 
-            brows.update(shapes)
-            nose.update(shapes)
+        if firstframe:
+            firstframe = False
+            fps.start()
+            (h, w) = frame.shape[:2]
+            mouse.maxheight, mouse.maxwidth = (h, w)
+            r = _args_.scalew / float(w)
+            dim = (_args_.scalew, int(h * r))
+            if _args_.verbose > 0:
+                print("Frame shape: {}\nFrame scaled: {}".format(frame.shape, dim))
 
-            dx = nose.dx
-            dy = nose.dy
-            dx *= _args_.xgain
-            dy *= _args_.ygain
-            if not _args_.filter:
-                dx = dx * (1.0 - motionweight) + prevdx * motionweight
-                dy = dy * (1.0 - motionweight) + prevdy * motionweight
-                prevdx = dx
-                prevdy = dy
+        gframe = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        sgframe = cv2.resize(gframe, dim, interpolation=cv2.INTER_AREA)
+        faces = detector(sgframe)
+        if len(faces) == 0:
+            no_face_frames += 1
+            if _args_.verbose > 0:
+                print(no_face_frames, 'no face', end='\r')
+            continue
 
-            dist = math.sqrt(dx * dx + dy * dy)
-            i_accel = int(dist + 0.5)
-            if i_accel >= len(accel):
-                i_accel = len(accel) - 1
+        face = dlib.rectangle(int(faces[0].left() / r),
+                              int(faces[0].top() / r),
+                              int(faces[0].right() / r),
+                              int(faces[0].bottom() / r))
+        shapes = predictor(gframe, face)
+        shapes = face_utils.shape_to_np(shapes)
 
-            if not _args_.filter:
-                if -mindeltathresh < dx < mindeltathresh:
-                    dx = 0
-                if -mindeltathresh < dy < mindeltathresh:
-                    dy = 0
-            dx *= accel[i_accel]
-            dy *= accel[i_accel]
-            dx = -int(round(dx))
-            dy = int(round(dy))
-            if _args_.verbose >= 3:
-                print(
-                    "{:4} ({:8.3f}, {:8.3f}) ({:8.3f}, {:6.3f}) ({:8.3f}, {:6.3f}) ({:3}, {:5.2f}) ({:3}, {:5.2f}) {:2} {}".format(
-                        framenum, shapes[30][0], shapes[30][1], nose[0], nose_v[0], nose[1],
-                        nose_v[1], dx, ax, dy, ay, i_accel, accel[i_accel]))
+        nose.update(shapes)
+        brows.update(shapes)
+        mouse.update(nose, brows)
 
-            if brows.raised:
-                click = 1
-                if _args_.verbose >= 3:
-                    print('click')
-            else:
-                click = 0
+        if _args_.verbose >= 3:
+            line = "{:4} ({:8.3f}, {:8.3f}) ({:8.3f}, {:6.3f}) ({:8.3f}, {:6.3f}) ".format(
+                framenum, nose.nose_raw[0], nose.nose_raw[1], nose.position[0], nose.vel[0],
+                nose.position[1], nose.vel[1])
+            line += "({:3}, {:5.2f}) ({:3}, {:5.2f}) {:2} {}".format(nose.dx, nose.ax, nose.dy,
+                                                                     nose.ay, mouse.i_accel,
+                                                                     mouse.accel[mouse.i_accel])
+            print(line)
 
-            if fd is not None:
-                report = struct.pack('<2b2h', 2, click, dx, dy)
-                fd.write(report)
-                fd.flush()
-                fps.update()
-                continue
-
-            # On dev system, draw stuff and simulate pointer
-            try:
-                cpos[0] += dx
-                cpos[1] += dy
-            except TypeError:
-                cpos = nose.position
-
-            if cpos[0] > maxwidth:
-                if wrap:
-                    cpos[0] -= maxwidth
-                else:
-                    cpos[0] = maxwidth
-            if cpos[1] > maxheight:
-                if wrap:
-                    cpos[1] -= maxheight
-                else:
-                    cpos[1] = maxheight
-            if cpos[0] < 0:
-                if wrap:
-                    cpos[0] += maxwidth
-                else:
-                    cpos[0] = 0
-            if cpos[1] < 0:
-                if wrap:
-                    cpos[1] += maxheight
-                else:
-                    cpos[1] = 0
-
-            cv2.circle(frame, (int(cpos[0]), int(cpos[1])), 4, (0, 0, 255), -1)
-
-            # cv2.putText(frame, str((ebd, ebda, eb_down, ebr)), (90, 130),
-            #             cv2.FONT_HERSHEY_DUPLEX, 0.9, (147, 58, 31), 1)
-            # cv2.putText(frame, "brows: " + str(t2), (90, 165),
-            #             cv2.FONT_HERSHEY_DUPLEX, 0.9, (147, 58, 31), 1)
-            cv2.putText(frame, "nose: " + str(nose), (90, 200),
-                        cv2.FONT_HERSHEY_DUPLEX, 0.9, (147, 58, 31), 1)
-            cv2.putText(frame, "dxdy: " + str((dx, dy)), (90, 235),
-                        cv2.FONT_HERSHEY_DUPLEX, 0.9, (147, 58, 31), 1)
-            cv2.putText(frame, "ptr : " + str((int(cpos[0]), int(cpos[1]))), (90, 270),
-                        cv2.FONT_HERSHEY_DUPLEX, 0.9, (147, 58, 31), 1)
-
-            facec = feature_center(shapes)
-            draw_landmarks(frame, shapes, facec)
-            # frame = face_utils.visualize_facial_landmarks(frame, shapes, [(0,255,0),]*8)
-            cv2.imshow("Demo", frame)
+        if _args_.onraspi:
             fps.update()
+            continue
 
-            if cv2.waitKey(1) == 27:
-                break
+        annotate_frame(frame, shapes, nose, brows, mouse)
 
-    except KeyboardInterrupt:
-        pass
+        demoq.put_nowait(frame)
+        fps.update()
 
-    if fd is not None:
-        report = struct.pack('<2b2h', 2, 0, 0, 0)
-        fd.write(report)
-        fd.close()
+    if _args_.verbose > 0 and no_face_frames:
+        print('')
+
+    mouse.send(0, 0, 0)
+    mouse.close_hidg()
 
     fps.stop()
+    cfps = cam.fps()
     cam.stop()
     cam.join()
 
-    for i in range(_args_.procs):
-        frameq.put('STOP')
-    for p in workers:
-        if _args_.verbose > 0:
-            print("Joining {}".format(p.name))
-        p.join()
-
     if _args_.verbose > 0:
-        print("Elapsed time: {:.1f}s\n         FPS: {:.3f}".format(fps.elapsed(), fps.fps()))
+        print("Elapsed time: {:.1f}s".format(fps.elapsed()))
+        print("         FPS: {:.3f}/{}".format(fps.fps(), cfps))
 
 
-def start_face_detect_thread(detector, predictor):
-    global running
-
-    fps = FPS()
-    demoq = queue.Queue()
-    t = Thread(target=face_detect, args=(demoq, detector, predictor))
-    t.start()
-    fps.start()
-    try:
-        while running:
-            frame = demoq.get()
-
-            cv2.imshow("Demo", frame)
-            fps.update()
-
-            if cv2.waitKey(1) == 27:
-                running = False
-    except KeyboardInterrupt:
-        running = False
-
-    fps.stop()
-    t.join()
-    print(fps.elapsed(), fps.fps())
+def feature_center(shapes):
+    centx, centy = 0, 0
+    if shapes is not None:
+        for x, y in shapes:
+            centx += x
+            centy += y
+        centx = int(centx / len(shapes))
+        centy = int(centy / len(shapes))
+    return centx, centy
 
 
-def kalmanfilter_init():
+def kalmanfilter_init(dt):
+    if dt is None:
+        dt = 1 / 20
     f = KalmanFilter(dim_x=4, dim_z=2)
-    framerate = 20
-    dt = 1 / framerate
     # State Transition matrix
     f.F = np.array([[1., dt, 0., 0.],
                     [0., 1., 0., 0.],
@@ -810,25 +726,6 @@ def kalmanfilter_init():
     # Current state covariance matrix
     f.P = np.eye(4) * 1000.
     return f
-
-
-def renice(nice, pids):
-    if not _args_.onraspi:
-        return
-
-    if isinstance(pids, int):
-        _pids = [pids, ]
-    else:
-        _pids = pids
-
-    devnull = ""
-    if _args_.verbose:
-        print("Adjusting process priority.")
-    else:
-        devnull = ">/dev/null 2>&1"
-    pstr = " ".join(["-p {}".format(p) for p in _pids])
-    cmd = shlex.split("/usr/bin/sudo /usr/bin/renice {} {} {}".format(nice, pstr, devnull))
-    subprocess.Popen(cmd).wait(timeout=5)
 
 
 def parse_arguments():
@@ -861,6 +758,159 @@ def parse_arguments():
     return args
 
 
+def point_distance(p1, p2):
+    d = math.sqrt((p1[0] - p2[0]) ** 2 + (p1[1] - p2[1]) ** 2)
+    return d
+
+
+def renice(nice, pids):
+    if not _args_.onraspi:
+        return
+
+    if isinstance(pids, int):
+        _pids = [pids, ]
+    else:
+        _pids = pids
+
+    if _args_.verbose:
+        print("Adjusting process priority.")
+        stdout = None
+        stderr = None
+    else:
+        stdout = subprocess.DEVNULL
+        stderr = stdout
+
+    pstr = " ".join(["-p {}".format(p) for p in _pids])
+    cmd = shlex.split("/usr/bin/sudo /usr/bin/renice {} {}".format(nice, pstr))
+    subprocess.Popen(cmd, stdout=stdout, stderr=stderr).wait(timeout=5)
+
+
+def start_face_detect_procs(detector, predictor):
+    if _args_.verbose > 0:
+        print("{} pid {}".format(mp.current_process().name, mp.current_process().pid))
+    frameq = mp.Queue()
+    shapesq = mp.Queue()
+    workers = []
+    for _ in range(_args_.procs):
+        _p = mp.Process(target=face_detect_mp, args=(frameq, shapesq, detector, predictor, _args_))
+        _p.start()
+        workers.append(_p)
+        if _args_.verbose > 0:
+            print("{} pid {}".format(_p.name, _p.pid))
+
+    renice(-10, [p.pid for p in workers])
+
+    rotate = None
+    picam = False
+    if _args_.onraspi:
+        resolution = (640, 480)
+        if not _args_.usbcam:
+            rotate = 180
+            picam = True
+    else:
+        resolution = (1280, 720)
+
+    cam = MyVideoStream(usePiCamera=picam, resolution=resolution, frame_q=frameq,
+                        rotation=rotate).start()
+
+    brows = Eyebrows(_args_.ebd)
+    nose = Nose(_args_.filter, 1 / cam.fps())
+    mouse = MousePointer(xgain=_args_.xgain, ygain=_args_.ygain, smoothness=_args_.smoothness,
+                         mindeltathresh=1, verbose=_args_.verbose)
+    fps = FPS()
+    firstframe = True
+    try:
+        while True:
+            framenum, frame, shapes = shapesq.get()
+            if firstframe:
+                firstframe = False
+                mouse.maxwidth, mouse.maxheight = cam.framew, cam.frameh
+                fps.start()
+            if shapes is None:
+                if _args_.filter is None:
+                    fps.update()
+                    continue
+
+            brows.update(shapes)
+            nose.update(shapes)
+            mouse.update(nose, brows)
+
+            if _args_.verbose >= 3:
+                line = "{:4} ({:8.3f}, {:8.3f}) ({:8.3f}, {:6.3f}) ({:8.3f}, {:6.3f}) ".format(
+                    framenum, nose.nose_raw[0], nose.nose_raw[1], nose.position[0], nose.vel[0],
+                    nose.position[1], nose.vel[1])
+                line += "({:3}, {:5.2f}) ({:3}, {:5.2f}) {:2} {}".format(nose.dx, nose.ax, nose.dy,
+                                                                         nose.ay, mouse.i_accel,
+                                                                         mouse.accel[mouse.i_accel])
+                print(line)
+
+            if _args_.onraspi:
+                fps.update()
+                continue
+
+            annotate_frame(frame, shapes, nose, brows, mouse)
+
+            cv2.imshow("Demo", frame)
+            fps.update()
+
+            if cv2.waitKey(1) == 27:
+                break
+
+    except KeyboardInterrupt:
+        pass
+
+    mouse.send(0, 0, 0)
+    mouse.close_hidg()
+
+    fps.stop()
+    cfps = cam.fps()
+    cam.stop()
+    cam.join()
+
+    for i in range(_args_.procs):
+        frameq.put('STOP')
+    for p in workers:
+        if _args_.verbose > 0:
+            print("Joining {}".format(p.name))
+        p.join()
+
+    if _args_.verbose > 0:
+        print("Elapsed time: {:.1f}s".format(fps.elapsed()))
+        print("         FPS: {:.3f}/{}".format(fps.fps(), cfps))
+
+
+def start_face_detect_thread(detector, predictor):
+    global running
+
+    fps = FPS()
+    demoq = queue.Queue()
+    t = Thread(target=face_detect, args=(demoq, detector, predictor))
+    t.start()
+    firstframe = True
+    try:
+        while running:
+            frame = demoq.get()
+            if firstframe:
+                firstframe = False
+                fps.start()
+
+            cv2.imshow("Demo", frame)
+            fps.update()
+
+            if cv2.waitKey(1) == 27:
+                running = False
+    except KeyboardInterrupt:
+        running = False
+
+    fps.stop()
+    t.join()
+
+    if _args_.verbose > 0 and not _args_.onraspi:
+        print("Demo Queue")
+        print("Elapsed time: {:.1f}s".format(fps.elapsed()))
+        print("         FPS: {:.3f}".format(fps.fps()))
+
+
 def main():
     global running
     global _args_
@@ -877,15 +927,23 @@ def main():
     if _args_.profile:
         yappi.start(builtins=True)
 
-    if _args_.verbose >= 1:
-        print("Xgain: {:.2f}\nYgain: {:.2f}".format(_args_.xgain, _args_.ygain))
+    if _args_.verbose > 0:
+        if _args_.procs > 0:
+            print("Multiproc[{} workers]".format(_args_.procs))
+        else:
+            print("Threaded QMode[{}]".format(_args_.qmode))
+        if _args_.filter:
+            print("Kalman filter[enabled]")
+        else:
+            print("Smoothness[{}]".format(_args_.smoothness))
+        print("Xgain[{:.2f}] Ygain[{:.2f}]".format(_args_.xgain, _args_.ygain))
         print("loading detector, predictor: ", end="", flush=True)
     cwd = os.path.abspath(os.path.dirname(__file__))
     model_path = os.path.abspath(os.path.join(cwd, "shape_predictor_68_face_landmarks.dat"))
     # model_path = os.path.abspath(os.path.join(cwd, "shape_predictor_5_face_landmarks.dat"))
     detector = dlib.get_frontal_face_detector()
     predictor = dlib.shape_predictor(model_path)
-    if _args_.verbose >= 1:
+    if _args_.verbose > 0:
         print("done.")
 
     renice(-10, mp.current_process().pid)
