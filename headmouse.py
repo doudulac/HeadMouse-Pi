@@ -824,11 +824,19 @@ def start_face_detect_procs(detector, predictor):
                          mindeltathresh=1, verbose=_args_.verbose)
     fps = FPS()
     firstframe = True
+    timeout = None
     try:
         while True:
-            framenum, frame, shapes = shapesq.get()
+            try:
+                framenum, frame, shapes = shapesq.get(timeout=timeout)
+            except queue.Empty:
+                if _args_.verbose > 0:
+                    print("queue delay...low voltage?")
+                continue
+
             if firstframe:
                 firstframe = False
+                timeout = .1
                 mouse.maxwidth, mouse.maxheight = cam.framew, cam.frameh
                 fps.start()
 
