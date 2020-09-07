@@ -521,11 +521,13 @@ def annotate_frame(frame, shapes, nose, brows, mouse):
 
     try:
         _d = brows.position - brows.pos_down
+        _pd = brows.pos_down
     except TypeError:
         _d = 0
-    cv2.putText(frame, str((brows.pos_down, brows.position, _d, brows.raised)), (90, 130),
+        _pd = 0
+    cv2.putText(frame, "{:.02f}, {}, {:.02f}".format(_pd, brows.raised, _d), (90, 130),
                 cv2.FONT_HERSHEY_DUPLEX, 0.9, (147, 58, 31), 1)
-    cv2.putText(frame, "brows: " + str(brows.position), (90, 165),
+    cv2.putText(frame, "brows: {:.2f}".format(brows.position), (90, 165),
                 cv2.FONT_HERSHEY_DUPLEX, 0.9, (147, 58, 31), 1)
     cv2.putText(frame, "nose: " + str(nose.position), (90, 200),
                 cv2.FONT_HERSHEY_DUPLEX, 0.9, (147, 58, 31), 1)
