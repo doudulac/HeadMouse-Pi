@@ -409,7 +409,7 @@ class MousePointer(object):
         if self._fd is not None:
             return self._fd
         try:
-            self._fd = open('/dev/hidg0', 'rb+')
+            self._fd = open('/dev/hidg0', 'r+b', buffering=0)
         except FileNotFoundError:
             self._fd = None
 
@@ -493,7 +493,6 @@ class MousePointer(object):
         if self._fd is not None:
             report = struct.pack('<2b2h', 2, click, dx, dy)
             self._fd.write(report)
-            self._fd.flush()
 
     def set_smoothness(self, value):
         if value is None or value < 0:
