@@ -312,15 +312,17 @@ class Nose(object):
         # mouthi 60,67
         if shapes is not None:
             self.nose_raw = shapes[30]
+            kfu = self.nose_raw
         else:
-            self.nose_raw = [0, 0]
+            # Let self.nose_raw from last time persist, making dx = 0 if no filter
+            kfu = None
 
         if self._kf is None:
             nose = self.nose_raw
             vel = [0, 0]
         else:
             self._kf.predict()
-            self._kf.update(self.nose_raw)
+            self._kf.update(kfu)
             nose = [self._kf.x[0][0], self._kf.x[2][0]]
             vel = [self._kf.x[1][0], self._kf.x[3][0]]
 
@@ -830,10 +832,6 @@ def start_face_detect_procs(detector, predictor):
                 firstframe = False
                 mouse.maxwidth, mouse.maxheight = cam.framew, cam.frameh
                 fps.start()
-            if shapes is None:
-                if _args_.filter is None:
-                    fps.update()
-                    continue
 
             brows.update(shapes)
             nose.update(shapes)
