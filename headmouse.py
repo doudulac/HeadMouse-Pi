@@ -449,7 +449,11 @@ class MousePointer(object):
         else:
             click = 0
 
-        self.send(click, dx, dy)
+        dist = math.sqrt(dx * dx + dy * dy)
+        if _args_.verbose > 0 and dist > 100:
+            print("wild mouse", dist, dx, dy)
+        else:
+            self.send(click, dx, dy)
         if self._fd is not None:
             return
 
