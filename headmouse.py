@@ -927,7 +927,7 @@ def main():
             pass
 
     if _args_.profile:
-        yappi.start(builtins=True)
+        yappi.start(builtins=False)
 
     if _args_.verbose > 0:
         if _args_.procs > 0:
