@@ -706,7 +706,7 @@ def feature_center(shapes):
     return centx, centy
 
 
-def kalmanfilter_init(dt):
+def kalmanfilter_init(dt=None):
     if dt is None:
         dt = 1 / 20
     f = KalmanFilter(dim_x=4, dim_z=2)
@@ -716,14 +716,14 @@ def kalmanfilter_init(dt):
                     [0., 0., 1., dt],
                     [0., 0., 0., 1.]])
     # Process noise matrix
-    q = Q_discrete_white_noise(dim=2, dt=dt, var=5)
+    q = Q_discrete_white_noise(dim=2, dt=dt, var=2)
     f.Q = block_diag(q, q)
     # Measurement function
     f.H = np.array([[1., 0., 0., 0.],
                     [0., 0., 1., 0.]])
     # Measurement noise matrix
-    f.R = np.array([[5., 0.],
-                    [0., 5.]])
+    f.R = np.array([[2., 0.],
+                    [0., 2.]])
     # Current state estimate
     f.x = np.array([[0., 0., 0., 0.]]).T
     # Current state covariance matrix
