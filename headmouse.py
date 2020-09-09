@@ -246,6 +246,7 @@ class Eyebrows(object):
 
     def update(self, shapes):
         if shapes is None:
+            self._raised = False
             return
 
         # jaw 0,16
