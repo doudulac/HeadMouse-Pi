@@ -628,6 +628,8 @@ def face_detect(demoq, detector, predictor):
     nose = Nose(_args_.filter, 1 / cam.fps())
     mouse = MousePointer(xgain=_args_.xgain, ygain=_args_.ygain, smoothness=_args_.smoothness,
                          mindeltathresh=1, verbose=_args_.verbose)
+    if _args_.debug:
+        mouse.close_hidg()
     firstframe = True
     while running:
         pframenum = framenum
@@ -760,7 +762,10 @@ def parse_arguments():
     parser.add_argument("-y", "--ygain", default=1.0, type=float,
                         help="Y gain")
     parser.add_argument("--onraspi", action="store_true",
-                        help="")
+                        help="force raspi mode")
+    parser.add_argument("--debug", action="store_true",
+                        help="disable mouse reports to host")
+
     args = parser.parse_args()
     return args
 
@@ -824,6 +829,9 @@ def start_face_detect_procs(detector, predictor):
     nose = Nose(_args_.filter, 1 / cam.fps())
     mouse = MousePointer(xgain=_args_.xgain, ygain=_args_.ygain, smoothness=_args_.smoothness,
                          mindeltathresh=1, verbose=_args_.verbose)
+    if _args_.debug:
+        mouse.close_hidg()
+
     fps = FPS()
     firstframe = True
     timeout = None
@@ -927,6 +935,9 @@ def main():
     global _args_
 
     _args_ = parse_arguments()
+
+    if _args_.debug and _args_.verbose < 2:
+        _args_.verbose = 2
 
     if not _args_.onraspi:
         try:
