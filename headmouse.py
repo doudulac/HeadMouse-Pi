@@ -240,8 +240,8 @@ class Eyebrows(object):
         self.threshold = threshold
 
         self._ebds = None
-        self._pos_down = None
-        self._position = None
+        self._angs = None
+        self._cur_height = None
         self._raised = False
 
     def update(self, shapes):
@@ -259,28 +259,39 @@ class Eyebrows(object):
         # moutho 48,59
         # mouthi 60,67
 
-        ebc = feature_center(shapes[17:27])
+        sep = feature_center(shapes[31:36])
+        cen = feature_center(shapes)
+        angle = cen[1] - sep[1]
+        ebc = feature_center([shapes[19], shapes[24]])
         eyec = feature_center(shapes[36:48])
         ebd = point_distance(ebc, eyec)
+
         if self._ebds is None:
-            self._ebds = [ebd, ebd]
+            self._ebds = [ebd, ] * 7
+            self._angs = [ebd, ] * 7
         else:
             self._ebds.append(self._ebds.pop(0))
             self._ebds[-1] = ebd
-            if self._pos_down is None:
-                self._pos_down = sum(self._ebds) / len(self._ebds)
+            self._angs.append(self._angs.pop(0))
+            self._angs[-1] = angle
 
-        self._position = sum(self._ebds) / len(self._ebds)
-        if self._pos_down is not None:
-            self._raised = self._position - self._pos_down > self.threshold
+        self._cur_height = sum(self._ebds[-2:]) / len(self._ebds[-2:])
+        past = sum(self._ebds[:-2]) / len(self._ebds[:-2])
+        ang = sum(self._angs[-2:]) / len(self._angs[-2:])
+        ang_past = sum(self._angs[:-2]) / len(self._angs[:-2])
+        if not self._raised:
+            self._raised = self._cur_height - past > self.threshold and angle - ang_past < 2.0
+        else:
+            lowered = past - self._cur_height > self.threshold and ang_past - angle < 2.0
+            self._raised = not lowered
+
+        if _args_.verbose > 1:
+            print("{:.02f} {:.02f} {:.02f} {:.02f} {:.02f}".format(
+                past, self._cur_height, ang_past, ang, angle))
 
     @property
-    def position(self):
-        return self._position
-
-    @property
-    def pos_down(self):
-        return self._pos_down
+    def cur_height(self):
+        return self._cur_height
 
     @property
     def raised(self):
@@ -484,7 +495,7 @@ class MousePointer(object):
                 self.cpos[1] = 0
 
     def send(self, click, dx, dy):
-        if self.verbose >= 3 and click:
+        if self.verbose > 1 and click:
             print('click')
 
         if self._fd is not None:
@@ -520,15 +531,7 @@ class MousePointer(object):
 def annotate_frame(frame, shapes, nose, brows, mouse):
     cv2.circle(frame, (int(mouse.cpos[0]), int(mouse.cpos[1])), 4, (0, 0, 255), -1)
 
-    try:
-        _d = brows.position - brows.pos_down
-        _pd = brows.pos_down
-    except TypeError:
-        _d = 0
-        _pd = 0
-    cv2.putText(frame, "{:.02f}, {}, {:.02f}".format(_pd, brows.raised, _d), (90, 130),
-                cv2.FONT_HERSHEY_DUPLEX, 0.9, (147, 58, 31), 1)
-    cv2.putText(frame, "brows: {:.2f}".format(brows.position), (90, 165),
+    cv2.putText(frame, "brows: {:.2f} {}".format(brows.cur_height, brows.raised), (90, 165),
                 cv2.FONT_HERSHEY_DUPLEX, 0.9, (147, 58, 31), 1)
     cv2.putText(frame, "nose: " + str(nose.position), (90, 200),
                 cv2.FONT_HERSHEY_DUPLEX, 0.9, (147, 58, 31), 1)
