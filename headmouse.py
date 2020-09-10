@@ -231,17 +231,19 @@ class MyVideoCapture(object):
 
 
 class Eyebrows(object):
-    def __init__(self, threshold):
+    def __init__(self, threshold, sticky=False):
         self.threshold = threshold
 
         self._ebds = None
         self._angs = None
         self._cur_height = None
         self._raised = False
+        self._raised_count = 0
+        self.sticky = sticky
+        self._sticky_raised = False
 
     def update(self, shapes):
         if shapes is None:
-            self._raised = False
             return
 
         # jaw 0,16
@@ -261,24 +263,43 @@ class Eyebrows(object):
         eyec = feature_center(shapes[36:48])
         ebd = point_distance(ebc, eyec)
 
+        _n = 6
+        _s = -2
         if self._ebds is None:
-            self._ebds = [ebd, ] * 7
-            self._angs = [ebd, ] * 7
+            self._ebds = [ebd, ] * _n
+            self._angs = [ebd, ] * _n
         else:
             self._ebds.append(self._ebds.pop(0))
             self._ebds[-1] = ebd
             self._angs.append(self._angs.pop(0))
             self._angs[-1] = angle
 
-        self._cur_height = sum(self._ebds[-2:]) / len(self._ebds[-2:])
-        past = sum(self._ebds[:-2]) / len(self._ebds[:-2])
-        ang = sum(self._angs[-2:]) / len(self._angs[-2:])
-        ang_past = sum(self._angs[:-2]) / len(self._angs[:-2])
-        if not self._raised:
-            self._raised = self._cur_height - past > self.threshold and angle - ang_past < 2.0
+        self._cur_height = sum(self._ebds[_s:]) / len(self._ebds[_s:])
+        past = sum(self._ebds[:_s]) / len(self._ebds[:_s])
+        ang = sum(self._angs[_s:]) / len(self._angs[_s:])
+        ang_past = sum(self._angs[:_s]) / len(self._angs[:_s])
+
+        if self.sticky:
+            raised = self._cur_height - past > self.threshold and angle - ang_past < 2.0
+            if not self._raised:
+                self._raised = raised
+            else:
+                lowered = past - self._cur_height > self.threshold * .60 and ang_past - angle < 2.0
+                if not self._sticky_raised or self._raised_count > 0:
+                    self._raised = not lowered
+                elif raised:
+                    self._sticky_raised = False
+
+            if self._raised and not self._sticky_raised:
+                self._raised_count += 1
+                if self._raised_count > 5:
+                    self._sticky_raised = True
+                    self._raised_count = 0
+            else:
+                self._raised_count = 0
+
         else:
-            lowered = past - self._cur_height > self.threshold and ang_past - angle < 2.0
-            self._raised = not lowered
+            self._raised = self._cur_height - past > self.threshold and angle - ang_past < 2.0
 
         if _args_.verbose > 1:
             print("{:.02f} {:.02f} {:.02f} {:.02f} {:.02f}".format(
@@ -740,6 +761,8 @@ def parse_arguments():
                         help="Eyebrow distance for click (default: 7.0)")
     parser.add_argument("-f", "--filter", action="store_true",
                         help="enable filter")
+    parser.add_argument("-k", "--stickyclick", action="store_true",
+                        help="enable eyebrow sticky click")
     parser.add_argument("-p", "--profile", action="store_true",
                         help="enable profiling")
     parser.add_argument("-q", "--qmode", action="store_true",
@@ -822,7 +845,7 @@ def start_face_detect_procs(detector, predictor):
     cam = MyVideoStream(usePiCamera=picam, resolution=resolution, frame_q=frameq,
                         rotation=rotate).start()
 
-    brows = Eyebrows(_args_.ebd)
+    brows = Eyebrows(_args_.ebd, _args_.stickyclick)
     nose = Nose(_args_.filter, 1 / cam.fps())
     mouse = MousePointer(xgain=_args_.xgain, ygain=_args_.ygain, smoothness=_args_.smoothness,
                          mindeltathresh=1, verbose=_args_.verbose)
