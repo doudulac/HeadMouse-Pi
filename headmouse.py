@@ -84,6 +84,11 @@ class MyPiVideoStream:
         self.rawCapture = picamera.array.PiRGBArray(self.camera, size=resolution)
         self.stream = self.camera.capture_continuous(self.rawCapture,
                                                      format="bgr", use_video_port=True)
+        if _args_.debug_video:
+            fourcc = cv2.VideoWriter_fourcc(*'XVID')
+            self.writer = cv2.VideoWriter("testfile.avi", fourcc, framerate, resolution)
+        else:
+            self.writer = None
 
         # initialize the frame and the variable used to indicate
         # if the thread should be stopped
@@ -110,6 +115,8 @@ class MyPiVideoStream:
             # preparation for the next frame
             frame = f.array
             framenum += 1
+            if self.writer is not None:
+                self.writer.write(frame)
             if self.frame_q is not None:
                 self.frame_q.put_nowait((framenum, frame))
             else:
@@ -120,6 +127,8 @@ class MyPiVideoStream:
             # if the thread indicator variable is set, stop the thread
             # and resource camera resources
             if self.stopped:
+                if self.writer is not None:
+                    self.writer.release()
                 self.stream.close()
                 self.rawCapture.close()
                 self.camera.close()
@@ -162,6 +171,13 @@ class MyVideoCapture(object):
         if framerate is not None:
             self.stream.set(cv2.CAP_PROP_FPS, framerate)
 
+        if _args_.debug_video:
+            fourcc = cv2.VideoWriter_fourcc(*'XVID')
+            self.writer = cv2.VideoWriter("testfile.avi", fourcc, 10.0,
+                                          (int(self.stream.get(3)), int(self.stream.get(4))))
+        else:
+            self.writer = None
+
         # initialize the thread name
         self.name = name
 
@@ -188,6 +204,8 @@ class MyVideoCapture(object):
         while True:
             # if the thread indicator variable is set, stop the thread
             if self.stopped:
+                if self.writer is not None:
+                    self.writer.release()
                 if _args_.verbose > 0:
                     print("Frames captured:", framenum)
                     try:
@@ -201,6 +219,8 @@ class MyVideoCapture(object):
             if self.framew is None and frame is not None:
                 (self.frameh, self.framew) = frame.shape[:2]
             framenum += 1
+            if self.writer is not None:
+                self.writer.write(frame)
             if self.frame_q is not None:
                 self.frame_q.put_nowait((framenum, frame))
             else:
@@ -433,6 +453,7 @@ class MousePointer(object):
                       4.1, 4.2, 4.3, 4.4, 4.5,
                       4.6, 4.7, 4.8, 4.9, 5.0,
                       5.1, 5.2, 5.3, 5.4, 5.5, ]
+        # self.accel = [1.0]*10 + [2.0]*20
 
     def open_hidg(self):
         if self._fd is not None:
@@ -785,6 +806,8 @@ def parse_arguments():
                         help="force raspi mode")
     parser.add_argument("--debug", action="store_true",
                         help="disable mouse reports to host")
+    parser.add_argument("--debug-video", action="store_true",
+                        help="save video to testfile")
 
     args = parser.parse_args()
     return args
