@@ -833,17 +833,19 @@ def start_face_detect_procs(detector, predictor):
     renice(-10, [p.pid for p in workers])
 
     rotate = None
-    picam = False
+    picam = _args_.onraspi and not _args_.usbcam
+    framerate = 20
+    resolution = (1280, 720)
     if _args_.onraspi:
-        resolution = (640, 480)
         if not _args_.usbcam:
+            # resolution = (320, 240)
+            # framerate = 24
+            resolution = (640, 480)
+            framerate = 20
             rotate = 180
-            picam = True
-    else:
-        resolution = (1280, 720)
 
-    cam = MyVideoStream(usePiCamera=picam, resolution=resolution, frame_q=frameq,
-                        rotation=rotate).start()
+    cam = MyVideoStream(usePiCamera=picam, resolution=resolution, framerate=framerate,
+                        frame_q=frameq, rotation=rotate).start()
 
     brows = Eyebrows(_args_.ebd, _args_.stickyclick)
     nose = Nose(_args_.filter, 1 / cam.fps())
@@ -866,7 +868,7 @@ def start_face_detect_procs(detector, predictor):
 
             if firstframe:
                 firstframe = False
-                timeout = .1
+                timeout = 2 / framerate
                 mouse.maxwidth, mouse.maxheight = cam.framew, cam.frameh
                 fps.start()
 
