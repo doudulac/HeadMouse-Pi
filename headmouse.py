@@ -391,9 +391,12 @@ class Nose(object):
 
 class MousePointer(object):
     def __init__(self, xgain=None, ygain=None, smoothness=None, mindeltathresh=None, verbose=None):
+        self._fd = None
+        self.open_hidg()
         self._dx = None
         self._dy = None
         self.cpos = None
+        self.track_cpos = self._fd is None
         self.maxheight = None
         self.maxwidth = None
         self.wrap = False
@@ -407,8 +410,6 @@ class MousePointer(object):
         self._prevdx = 0
         self._prevdy = 0
         self.verbose = verbose if verbose is not None else 0
-        self._fd = None
-        self.open_hidg()
         self.i_accel = None
         self.accel = [1.0, 1.0, 1.8, 1.9, 2.0,
                       2.0, 2.0, 2.0, 2.1, 2.2,
@@ -464,7 +465,8 @@ class MousePointer(object):
             click = 0
 
         self.send(click, dx, dy)
-        if self._fd is not None:
+
+        if not self.track_cpos:
             return
 
         try:
