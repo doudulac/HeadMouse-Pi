@@ -251,7 +251,7 @@ class MyVideoCapture(object):
 
 
 class Eyebrows(object):
-    def __init__(self, threshold, sticky=False):
+    def __init__(self, threshold, sticky=False, fps=None):
         self.threshold = threshold
 
         self._ebds = None
@@ -261,6 +261,10 @@ class Eyebrows(object):
         self._raised_count = 0
         self.sticky = sticky
         self._sticky_raised = False
+        if fps is None:
+            fps = FPS()
+            fps.start()
+        self._fps = fps
 
     def update(self, shapes):
         if shapes is None:
@@ -300,6 +304,7 @@ class Eyebrows(object):
         ang_past = sum(self._angs[:_s]) / len(self._angs[:_s])
 
         if self.sticky:
+            self._fps.stop()
             raised = self._cur_height - past > self.threshold and angle - ang_past < 2.0
             if not self._raised:
                 self._raised = raised
@@ -312,7 +317,7 @@ class Eyebrows(object):
 
             if self._raised and not self._sticky_raised:
                 self._raised_count += 1
-                if self._raised_count > 5:
+                if self._raised_count > int(self._fps.fps() * .5):
                     self._sticky_raised = True
                     self._raised_count = 0
             else:
@@ -322,8 +327,8 @@ class Eyebrows(object):
             self._raised = self._cur_height - past > self.threshold and angle - ang_past < 2.0
 
         if _args_.verbose > 1:
-            print("{:.02f} {:.02f} {:.02f} {:.02f} {:.02f}".format(
-                past, self._cur_height, ang_past, ang, angle))
+            print("{:.02f} {:.02f} {:.02f} {:.02f} {:.02f} {}".format(
+                past, self._cur_height, ang_past, ang, angle, int(self._fps.fps() * .5)))
 
     @property
     def cur_height(self):
@@ -644,31 +649,34 @@ def face_detect(demoq, detector, predictor):
     global running
     global _args_
 
+    fps = FPS()
     r = None
     rotate = None
-    picam = False
+    picam = _args_.onraspi and not _args_.usbcam
     frameq = queue.Queue() if _args_.qmode else None
-    fps = FPS()
+    framerate = 20
+    resolution = (1280, 720)
     if _args_.onraspi:
-        resolution = (640, 480)
         if not _args_.usbcam:
+            # resolution = (320, 240)
+            # framerate = 24
+            resolution = (640, 480)
+            framerate = 20
             rotate = 180
-            picam = True
-    else:
-        resolution = (1280, 720)
 
-    cam = MyVideoStream(usePiCamera=picam, resolution=resolution, frame_q=frameq,
-                        rotation=rotate).start()
+    cam = MyVideoStream(usePiCamera=picam, resolution=resolution, framerate=framerate,
+                        frame_q=frameq, rotation=rotate).start()
 
-    no_face_frames = 0
-    dim = None
-    framenum = 0
-    brows = Eyebrows(_args_.ebd)
+    brows = Eyebrows(_args_.ebd, sticky=_args_.stickyclick, fps=fps)
     nose = Nose(_args_.filter, 1 / cam.fps())
     mouse = MousePointer(xgain=_args_.xgain, ygain=_args_.ygain, smoothness=_args_.smoothness,
                          mindeltathresh=1, verbose=_args_.verbose)
     if _args_.debug:
         mouse.close_hidg()
+
+    no_face_frames = 0
+    dim = None
+    framenum = 0
     firstframe = True
     while running:
         pframenum = framenum
@@ -855,6 +863,7 @@ def start_face_detect_procs(detector, predictor):
 
     renice(-10, [p.pid for p in workers])
 
+    fps = FPS()
     rotate = None
     picam = _args_.onraspi and not _args_.usbcam
     framerate = 20
@@ -870,14 +879,13 @@ def start_face_detect_procs(detector, predictor):
     cam = MyVideoStream(usePiCamera=picam, resolution=resolution, framerate=framerate,
                         frame_q=frameq, rotation=rotate).start()
 
-    brows = Eyebrows(_args_.ebd, _args_.stickyclick)
+    brows = Eyebrows(_args_.ebd, sticky=_args_.stickyclick, fps=fps)
     nose = Nose(_args_.filter, 1 / cam.fps())
     mouse = MousePointer(xgain=_args_.xgain, ygain=_args_.ygain, smoothness=_args_.smoothness,
                          mindeltathresh=1, verbose=_args_.verbose)
     if _args_.debug:
         mouse.close_hidg()
 
-    fps = FPS()
     firstframe = True
     timeout = None
     try:
