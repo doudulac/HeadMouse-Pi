@@ -778,8 +778,8 @@ def kalmanfilter_init(dt=None):
 
 def parse_arguments():
     parser = argparse.ArgumentParser()
-    parser.add_argument("-e", "--ebd", default=7.0, type=float,
-                        help="Eyebrow distance for click (default: 7.0)")
+    parser.add_argument("-e", "--ebd", default=4.0, type=float,
+                        help="Eyebrow distance for click (default: 4.0)")
     parser.add_argument("-f", "--filter", action="store_true",
                         help="enable filter")
     parser.add_argument("-k", "--stickyclick", action="store_true",
@@ -790,8 +790,8 @@ def parse_arguments():
                         help="enable queue mode")
     parser.add_argument("-r", "--procs", default=2, type=int,
                         help="number of procs (default: 2)")
-    parser.add_argument("-s", "--smoothness", default=1, type=int, choices=range(1, 9),
-                        help="smoothness 1-8 (default: 1)")
+    parser.add_argument("-s", "--smoothness", default=3, type=int, choices=range(1, 9),
+                        help="smoothness 1-8 (default: 3)")
     parser.add_argument("-u", "--usbcam", action="store_true",
                         help="Use usb camera instead of PiCamera")
     parser.add_argument("-v", "--verbose", action="count", default=0,
