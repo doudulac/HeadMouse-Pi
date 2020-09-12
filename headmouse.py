@@ -306,7 +306,7 @@ class Mouth(object):
 
 
 class Eyebrows(object):
-    def __init__(self, threshold, sticky=False, fps=None):
+    def __init__(self, threshold, sticky=False):
         self.threshold = threshold
 
         self._ebds = None
@@ -316,10 +316,6 @@ class Eyebrows(object):
         self._raised_count = 0
         self.sticky = sticky
         self._sticky_raised = False
-        if fps is None:
-            fps = FPS()
-            fps.start()
-        self._fps = fps
 
     def update(self, shapes):
         if shapes is None:
@@ -359,7 +355,7 @@ class Eyebrows(object):
         ang_past = sum(self._angs[:_s]) / len(self._angs[:_s])
 
         if self.sticky:
-            self._fps.stop()
+            _fps_.stop()
             raised = self._cur_height - past > self.threshold and angle - ang_past < 2.0
             if not self._raised:
                 self._raised = raised
@@ -372,7 +368,7 @@ class Eyebrows(object):
 
             if self._raised and not self._sticky_raised:
                 self._raised_count += 1
-                if self._raised_count > int(self._fps.fps() * .5):
+                if self._raised_count > int(_fps_.fps() * .5):
                     self._sticky_raised = True
                     self._raised_count = 0
             else:
@@ -383,7 +379,7 @@ class Eyebrows(object):
 
         if _args_.verbose > 1:
             print("brows {:.02f} {:.02f} {:.02f} {:.02f} {:.02f} {}".format(
-                past, self._cur_height, ang_past, ang, angle, int(self._fps.fps() * .5)))
+                past, self._cur_height, ang_past, ang, angle, int(_fps_.fps() * .5)))
 
     @property
     def cur_height(self):
@@ -703,8 +699,9 @@ def face_detect_mp(frameq, shapesq, detector, predictor, args):
 def face_detect(demoq, detector, predictor):
     global running
     global _args_
+    global _fps_
 
-    fps = FPS()
+    _fps_ = FPS()
     r = None
     rotate = None
     picam = _args_.onraspi and not _args_.usbcam
@@ -723,7 +720,7 @@ def face_detect(demoq, detector, predictor):
                         frame_q=frameq, rotation=rotate).start()
 
     mouth = Mouth()
-    brows = Eyebrows(_args_.ebd, sticky=_args_.stickyclick, fps=fps)
+    brows = Eyebrows(_args_.ebd, sticky=_args_.stickyclick)
     nose = Nose(_args_.filter, 1 / cam.fps())
     mouse = MousePointer()
     if _args_.debug:
@@ -741,7 +738,7 @@ def face_detect(demoq, detector, predictor):
 
         if firstframe:
             firstframe = False
-            fps.start()
+            _fps_.start()
             (h, w) = frame.shape[:2]
             mouse.maxheight, mouse.maxwidth = (h, w)
             r = _args_.scalew / float(w)
@@ -780,13 +777,13 @@ def face_detect(demoq, detector, predictor):
             print(line)
 
         if _args_.onraspi:
-            fps.update()
+            _fps_.update()
             continue
 
         annotate_frame(frame, shapes, nose, brows, mouse)
 
         demoq.put_nowait(frame)
-        fps.update()
+        _fps_.update()
 
     if _args_.verbose > 0 and no_face_frames:
         print('')
@@ -794,14 +791,14 @@ def face_detect(demoq, detector, predictor):
     mouse.send(0, 0, 0)
     mouse.close_hidg()
 
-    fps.stop()
+    _fps_.stop()
     cfps = cam.fps()
     cam.stop()
     cam.join()
 
     if _args_.verbose > 0:
-        print("Elapsed time: {:.1f}s".format(fps.elapsed()))
-        print("         FPS: {:.3f}/{}".format(fps.fps(), cfps))
+        print("Elapsed time: {:.1f}s".format(_fps_.elapsed()))
+        print("         FPS: {:.3f}/{}".format(_fps_.fps(), cfps))
 
 
 def feature_center(shapes):
@@ -905,6 +902,8 @@ def renice(nice, pids):
 
 
 def start_face_detect_procs(detector, predictor):
+    global _fps_
+
     if _args_.verbose > 0:
         print("{} pid {}".format(mp.current_process().name, mp.current_process().pid))
     frameq = mp.Queue()
@@ -919,7 +918,7 @@ def start_face_detect_procs(detector, predictor):
 
     renice(-10, [p.pid for p in workers])
 
-    fps = FPS()
+    _fps_ = FPS()
     rotate = None
     picam = _args_.onraspi and not _args_.usbcam
     framerate = 20
@@ -936,7 +935,7 @@ def start_face_detect_procs(detector, predictor):
                         frame_q=frameq, rotation=rotate).start()
 
     mouth = Mouth()
-    brows = Eyebrows(_args_.ebd, sticky=_args_.stickyclick, fps=fps)
+    brows = Eyebrows(_args_.ebd, sticky=_args_.stickyclick)
     nose = Nose(_args_.filter, 1 / cam.fps())
     mouse = MousePointer()
     if _args_.debug:
@@ -957,7 +956,7 @@ def start_face_detect_procs(detector, predictor):
                 firstframe = False
                 timeout = 2 / framerate
                 mouse.maxwidth, mouse.maxheight = cam.framew, cam.frameh
-                fps.start()
+                _fps_.start()
 
             mouth.update(shapes)
             brows.update(shapes)
@@ -974,13 +973,13 @@ def start_face_detect_procs(detector, predictor):
                 print(line)
 
             if _args_.onraspi:
-                fps.update()
+                _fps_.update()
                 continue
 
             annotate_frame(frame, shapes, nose, brows, mouse)
 
             cv2.imshow("Demo", frame)
-            fps.update()
+            _fps_.update()
 
             if cv2.waitKey(1) == 27:
                 break
@@ -991,7 +990,7 @@ def start_face_detect_procs(detector, predictor):
     mouse.send(0, 0, 0)
     mouse.close_hidg()
 
-    fps.stop()
+    _fps_.stop()
     cfps = cam.fps()
     cam.stop()
     cam.join()
@@ -1004,8 +1003,8 @@ def start_face_detect_procs(detector, predictor):
         p.join()
 
     if _args_.verbose > 0:
-        print("Elapsed time: {:.1f}s".format(fps.elapsed()))
-        print("         FPS: {:.3f}/{}".format(fps.fps(), cfps))
+        print("Elapsed time: {:.1f}s".format(_fps_.elapsed()))
+        print("         FPS: {:.3f}/{}".format(_fps_.fps(), cfps))
 
 
 def start_face_detect_thread(detector, predictor):
@@ -1103,5 +1102,6 @@ def main():
 if __name__ == '__main__':
     running = True
     global _args_
+    global _fps_
 
     sys.exit(main())
