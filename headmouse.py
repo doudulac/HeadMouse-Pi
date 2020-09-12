@@ -487,6 +487,7 @@ class MousePointer(object):
         self.open_hidg()
         self._dx = None
         self._dy = None
+        self._click = None
         self.cpos = None
         self.track_cpos = self._fd is None
         self.maxheight = None
@@ -523,7 +524,7 @@ class MousePointer(object):
             self._fd.close()
             self._fd = None
 
-    def update(self, nose, brows, mouth):
+    def process_movement(self, nose):
         dx = nose.dx
         dy = nose.dy
         dx *= self.xgain
@@ -548,48 +549,55 @@ class MousePointer(object):
         dy *= self.accel[self.i_accel]
         dx = -int(round(dx))
         dy = int(round(dy))
+
         self._dx = dx
         self._dy = dy
 
+        if self.track_cpos:
+            try:
+                self.cpos[0] += dx
+                self.cpos[1] += dy
+            except TypeError:
+                self.cpos = nose.position
+
+            if self.cpos[0] > self.maxwidth:
+                if self.wrap:
+                    self.cpos[0] -= self.maxwidth
+                else:
+                    self.cpos[0] = self.maxwidth
+            if self.cpos[1] > self.maxheight:
+                if self.wrap:
+                    self.cpos[1] -= self.maxheight
+                else:
+                    self.cpos[1] = self.maxheight
+            if self.cpos[0] < 0:
+                if self.wrap:
+                    self.cpos[0] += self.maxwidth
+                else:
+                    self.cpos[0] = 0
+            if self.cpos[1] < 0:
+                if self.wrap:
+                    self.cpos[1] += self.maxheight
+                else:
+                    self.cpos[1] = 0
+
+        return dx, dy
+
+    def process_clicks(self, brows, mouth):
         click = 0
         if brows.raised:
             click |= 1
         if mouth.open:
             click |= 2
+        self._click = click
+        return click
 
-        self.send(click, dx, dy)
+    def update(self, nose, brows, mouth):
+        dx, dy = self.process_movement(nose)
+        click = self.process_clicks(brows, mouth)
+        self.send_mouse_relative(click, dx, dy)
 
-        if not self.track_cpos:
-            return
-
-        try:
-            self.cpos[0] += dx
-            self.cpos[1] += dy
-        except TypeError:
-            self.cpos = nose.position
-
-        if self.cpos[0] > self.maxwidth:
-            if self.wrap:
-                self.cpos[0] -= self.maxwidth
-            else:
-                self.cpos[0] = self.maxwidth
-        if self.cpos[1] > self.maxheight:
-            if self.wrap:
-                self.cpos[1] -= self.maxheight
-            else:
-                self.cpos[1] = self.maxheight
-        if self.cpos[0] < 0:
-            if self.wrap:
-                self.cpos[0] += self.maxwidth
-            else:
-                self.cpos[0] = 0
-        if self.cpos[1] < 0:
-            if self.wrap:
-                self.cpos[1] += self.maxheight
-            else:
-                self.cpos[1] = 0
-
-    def send(self, click, dx, dy):
+    def send_mouse_relative(self, click, dx, dy):
         if _args_.verbose > 1 and click:
             print('click', click)
 
@@ -613,6 +621,10 @@ class MousePointer(object):
     @property
     def dy(self):
         return self._dy
+
+    @property
+    def click(self):
+        return self._click
 
     @property
     def smoothness(self):
@@ -788,7 +800,7 @@ def face_detect(demoq, detector, predictor):
     if _args_.verbose > 0 and no_face_frames:
         print('')
 
-    mouse.send(0, 0, 0)
+    mouse.send_mouse_relative(0, 0, 0)
     mouse.close_hidg()
 
     _fps_.stop()
@@ -987,7 +999,7 @@ def start_face_detect_procs(detector, predictor):
     except KeyboardInterrupt:
         pass
 
-    mouse.send(0, 0, 0)
+    mouse.send_mouse_relative(0, 0, 0)
     mouse.close_hidg()
 
     _fps_.stop()
