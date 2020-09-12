@@ -486,7 +486,7 @@ class Nose(object):
 
 
 class MousePointer(object):
-    def __init__(self, xgain=None, ygain=None, smoothness=None, mindeltathresh=None, verbose=None):
+    def __init__(self, mindeltathresh=None):
         self._fd = None
         self.open_hidg()
         self._dx = None
@@ -496,16 +496,15 @@ class MousePointer(object):
         self.maxheight = None
         self.maxwidth = None
         self.wrap = False
-        self.xgain = xgain if xgain is not None else 1.0
-        self.ygain = ygain if ygain is not None else 1.0
+        self.xgain = _args_.xgain if _args_.xgain is not None else 1.0
+        self.ygain = _args_.ygain if _args_.ygain is not None else 1.0
         self.wrap = False
         self.mindeltathresh = mindeltathresh if mindeltathresh is not None else 1
         self._smoothness = None
         self._motionweight = None
-        self.set_smoothness(smoothness)
+        self.set_smoothness(_args_.smoothness)
         self._prevdx = 0
         self._prevdy = 0
-        self.verbose = verbose if verbose is not None else 0
         self.i_accel = None
         self.accel = [1.0, 1.0, 1.8, 1.9, 2.0,
                       2.0, 2.0, 2.0, 2.1, 2.2,
@@ -595,7 +594,7 @@ class MousePointer(object):
                 self.cpos[1] = 0
 
     def send(self, click, dx, dy):
-        if self.verbose > 1 and click:
+        if _args_.verbose > 1 and click:
             print('click', click)
 
         if self._fd is not None:
@@ -726,8 +725,7 @@ def face_detect(demoq, detector, predictor):
     mouth = Mouth()
     brows = Eyebrows(_args_.ebd, sticky=_args_.stickyclick, fps=fps)
     nose = Nose(_args_.filter, 1 / cam.fps())
-    mouse = MousePointer(xgain=_args_.xgain, ygain=_args_.ygain, smoothness=_args_.smoothness,
-                         mindeltathresh=1, verbose=_args_.verbose)
+    mouse = MousePointer()
     if _args_.debug:
         mouse.close_hidg()
 
@@ -940,8 +938,7 @@ def start_face_detect_procs(detector, predictor):
     mouth = Mouth()
     brows = Eyebrows(_args_.ebd, sticky=_args_.stickyclick, fps=fps)
     nose = Nose(_args_.filter, 1 / cam.fps())
-    mouse = MousePointer(xgain=_args_.xgain, ygain=_args_.ygain, smoothness=_args_.smoothness,
-                         mindeltathresh=1, verbose=_args_.verbose)
+    mouse = MousePointer()
     if _args_.debug:
         mouse.close_hidg()
 
