@@ -250,6 +250,61 @@ class MyVideoCapture(object):
         return self.stream.get(cv2.CAP_PROP_FPS)
 
 
+class Mouth(object):
+    def __init__(self):
+        self._vdists = None
+        self._cur_vdist = None
+        self._hdists = None
+        self._cur_hdist = None
+        self._open = False
+        self._smile = False
+
+    def update(self, shapes):
+        if shapes is None:
+            return
+
+        # moutho 48,59
+        # mouthi 60,67
+
+        lc = shapes[60]
+        rc = shapes[64]
+        hdist = point_distance(lc, rc)
+        up = shapes[62]
+        lo = shapes[66]
+        vdist = point_distance(up, lo)
+
+        _n = 6
+        _s = -2
+        if self._vdists is None:
+            self._vdists = [vdist, ] * _n
+            self._hdists = [hdist, ] * _n
+        else:
+            self._vdists.append(self._vdists.pop(0))
+            self._vdists[-1] = vdist
+            self._hdists.append(self._hdists.pop(0))
+            self._hdists[-1] = hdist
+
+        self._cur_vdist = sum(self._vdists[_s:]) / len(self._vdists[_s:])
+        vpast = sum(self._vdists[:_s]) / len(self._vdists[:_s])
+        self._cur_hdist = sum(self._hdists[_s:]) / len(self._hdists[_s:])
+        hpast = sum(self._hdists[:_s]) / len(self._hdists[:_s])
+        _r = self._cur_vdist / self._cur_hdist
+
+        self._open = _r >= .50
+
+        if _args_.verbose > 1:
+            print("mouth {:.02f} {:.02f} {:.02f} {:.02f} {:.02f}".format(
+                vpast, self._cur_vdist, hpast, self._cur_hdist, _r))
+
+    @property
+    def open(self):
+        return self._open
+
+    @property
+    def smile(self):
+        return self._smile
+
+
 class Eyebrows(object):
     def __init__(self, threshold, sticky=False, fps=None):
         self.threshold = threshold
@@ -327,7 +382,7 @@ class Eyebrows(object):
             self._raised = self._cur_height - past > self.threshold and angle - ang_past < 2.0
 
         if _args_.verbose > 1:
-            print("{:.02f} {:.02f} {:.02f} {:.02f} {:.02f} {}".format(
+            print("brows {:.02f} {:.02f} {:.02f} {:.02f} {:.02f} {}".format(
                 past, self._cur_height, ang_past, ang, angle, int(self._fps.fps() * .5)))
 
     @property
@@ -473,7 +528,7 @@ class MousePointer(object):
             self._fd.close()
             self._fd = None
 
-    def update(self, nose, brows):
+    def update(self, nose, brows, mouth):
         dx = nose.dx
         dy = nose.dy
         dx *= self.xgain
@@ -501,10 +556,11 @@ class MousePointer(object):
         self._dx = dx
         self._dy = dy
 
+        click = 0
         if brows.raised:
-            click = 1
-        else:
-            click = 0
+            click |= 1
+        if mouth.open:
+            click |= 2
 
         self.send(click, dx, dy)
 
@@ -540,7 +596,7 @@ class MousePointer(object):
 
     def send(self, click, dx, dy):
         if self.verbose > 1 and click:
-            print('click')
+            print('click', click)
 
         if self._fd is not None:
             report = struct.pack('<2b2h', 2, click, dx, dy)
@@ -667,6 +723,7 @@ def face_detect(demoq, detector, predictor):
     cam = MyVideoStream(usePiCamera=picam, resolution=resolution, framerate=framerate,
                         frame_q=frameq, rotation=rotate).start()
 
+    mouth = Mouth()
     brows = Eyebrows(_args_.ebd, sticky=_args_.stickyclick, fps=fps)
     nose = Nose(_args_.filter, 1 / cam.fps())
     mouse = MousePointer(xgain=_args_.xgain, ygain=_args_.ygain, smoothness=_args_.smoothness,
@@ -710,9 +767,10 @@ def face_detect(demoq, detector, predictor):
         shapes = predictor(gframe, face)
         shapes = face_utils.shape_to_np(shapes)
 
+        mouth.update(shapes)
         nose.update(shapes)
         brows.update(shapes)
-        mouse.update(nose, brows)
+        mouse.update(nose, brows, mouth)
 
         if _args_.verbose >= 3:
             line = "{:4} ({:8.3f}, {:8.3f}) ({:8.3f}, {:6.3f}) ({:8.3f}, {:6.3f}) ".format(
@@ -879,6 +937,7 @@ def start_face_detect_procs(detector, predictor):
     cam = MyVideoStream(usePiCamera=picam, resolution=resolution, framerate=framerate,
                         frame_q=frameq, rotation=rotate).start()
 
+    mouth = Mouth()
     brows = Eyebrows(_args_.ebd, sticky=_args_.stickyclick, fps=fps)
     nose = Nose(_args_.filter, 1 / cam.fps())
     mouse = MousePointer(xgain=_args_.xgain, ygain=_args_.ygain, smoothness=_args_.smoothness,
@@ -903,9 +962,10 @@ def start_face_detect_procs(detector, predictor):
                 mouse.maxwidth, mouse.maxheight = cam.framew, cam.frameh
                 fps.start()
 
+            mouth.update(shapes)
             brows.update(shapes)
             nose.update(shapes)
-            mouse.update(nose, brows)
+            mouse.update(nose, brows, mouth)
 
             if _args_.verbose >= 3:
                 line = "{:4} ({:8.3f}, {:8.3f}) ({:8.3f}, {:6.3f}) ({:8.3f}, {:6.3f}) ".format(
