@@ -250,14 +250,13 @@ class MyVideoCapture(object):
         return self.stream.get(cv2.CAP_PROP_FPS)
 
 
-class Mouth(object):
+class MouthOpen(object):
     def __init__(self):
         self._vdists = None
         self._cur_vdist = None
         self._hdists = None
         self._cur_hdist = None
         self._open = False
-        self._smile = False
 
     def update(self, shapes):
         if shapes is None:
@@ -290,7 +289,10 @@ class Mouth(object):
         hpast = sum(self._hdists[:_s]) / len(self._hdists[:_s])
         _r = self._cur_vdist / self._cur_hdist
 
-        self._open = _r >= .50
+        if not self._open:
+            self._open = _r >= .50
+        else:
+            self._open = _r >= .40
 
         if _args_.verbose > 1:
             print("mouth {:.02f} {:.02f} {:.02f} {:.02f} {:.02f}".format(
@@ -300,9 +302,11 @@ class Mouth(object):
     def open(self):
         return self._open
 
-    @property
-    def smile(self):
-        return self._smile
+    def button_up(self):
+        return self._open is False
+
+    def button_down(self):
+        return self._open is True
 
 
 class Eyebrows(object):
@@ -355,7 +359,6 @@ class Eyebrows(object):
         ang_past = sum(self._angs[:_s]) / len(self._angs[:_s])
 
         if self.sticky:
-            _fps_.stop()
             raised = self._cur_height - past > self.threshold and angle - ang_past < 2.0
             if not self._raised:
                 self._raised = raised
@@ -368,7 +371,7 @@ class Eyebrows(object):
 
             if self._raised and not self._sticky_raised:
                 self._raised_count += 1
-                if self._raised_count > int(_fps_.fps() * .5):
+                if self._raised_count > int(round(_fps_.fps() * .5)):
                     self._sticky_raised = True
                     self._raised_count = 0
             else:
@@ -378,8 +381,8 @@ class Eyebrows(object):
             self._raised = self._cur_height - past > self.threshold and angle - ang_past < 2.0
 
         if _args_.verbose > 1:
-            print("brows {:.02f} {:.02f} {:.02f} {:.02f} {:.02f} {}".format(
-                past, self._cur_height, ang_past, ang, angle, int(_fps_.fps() * .5)))
+            print("brows {:.02f} {:.02f} {:.02f} {:.02f} {:.02f} {} {}".format(
+                past, self._cur_height, ang_past, ang, angle, self._raised_count, self._raised))
 
     @property
     def cur_height(self):
@@ -388,6 +391,12 @@ class Eyebrows(object):
     @property
     def raised(self):
         return self._raised
+
+    def button_up(self):
+        return self._raised is False
+
+    def button_down(self):
+        return self._raised is True
 
 
 class Nose(object):
@@ -482,12 +491,15 @@ class Nose(object):
 
 
 class MousePointer(object):
-    def __init__(self, mindeltathresh=None):
+    def __init__(self, button1=None, button2=None, button3=None, mindeltathresh=None):
         self._fd = None
         self.open_hidg()
         self._dx = None
         self._dy = None
         self._click = None
+        self.btn = {1: {'s': 0, 'f': button1},
+                    2: {'s': 0, 'f': button2},
+                    3: {'s': 0, 'f': button3}, }
         self.cpos = None
         self.track_cpos = self._fd is None
         self.maxheight = None
@@ -583,18 +595,37 @@ class MousePointer(object):
 
         return dx, dy
 
-    def process_clicks(self, brows, mouth):
+    def process_clicks(self):
         click = 0
-        if brows.raised:
-            click |= 1
-        if mouth.open:
-            click |= 2
+
+        for i, btn in self.btn.items():
+            if btn['f'] is None:
+                continue
+            if btn['s'] > 0:
+                btn['s'] -= 1
+                if btn['s'] == 0:
+                    if btn['f'].button_down():
+                        if i == 1 and _args_.stickyclick:
+                            btn['s'] = -1
+                        if i == 2:
+                            btn['s'] = 1
+            elif btn['s'] < 0:
+                if btn['f'].button_up():
+                    btn['s'] = 0
+
+            if btn['s'] < 0:
+                click |= 1 << (i-1)
+            elif btn['s'] == 0 and btn['f'].button_down():
+                btn['s'] = int(round(_fps_.fps() * .4))
+                click |= 1 << (i-1)
+
         self._click = click
+
         return click
 
-    def update(self, nose, brows, mouth):
+    def update(self, nose):
         dx, dy = self.process_movement(nose)
-        click = self.process_clicks(brows, mouth)
+        click = self.process_clicks()
         self.send_mouse_relative(click, dx, dy)
 
     def send_mouse_relative(self, click, dx, dy):
@@ -731,10 +762,10 @@ def face_detect(demoq, detector, predictor):
     cam = MyVideoStream(usePiCamera=picam, resolution=resolution, framerate=framerate,
                         frame_q=frameq, rotation=rotate).start()
 
-    mouth = Mouth()
+    mouth = MouthOpen()
     brows = Eyebrows(_args_.ebd, sticky=_args_.stickyclick)
     nose = Nose(_args_.filter, 1 / cam.fps())
-    mouse = MousePointer()
+    mouse = MousePointer(button1=brows, button2=mouth)
     if _args_.debug:
         mouse.close_hidg()
 
@@ -777,7 +808,7 @@ def face_detect(demoq, detector, predictor):
         mouth.update(shapes)
         nose.update(shapes)
         brows.update(shapes)
-        mouse.update(nose, brows, mouth)
+        mouse.update(nose)
 
         if _args_.verbose >= 3:
             line = "{:4} ({:8.3f}, {:8.3f}) ({:8.3f}, {:6.3f}) ({:8.3f}, {:6.3f}) ".format(
@@ -788,14 +819,12 @@ def face_detect(demoq, detector, predictor):
                                                                      mouse.accel[mouse.i_accel])
             print(line)
 
+        _fps_.update()
         if _args_.onraspi:
-            _fps_.update()
             continue
 
         annotate_frame(frame, shapes, nose, brows, mouse)
-
         demoq.put_nowait(frame)
-        _fps_.update()
 
     if _args_.verbose > 0 and no_face_frames:
         print('')
@@ -946,10 +975,10 @@ def start_face_detect_procs(detector, predictor):
     cam = MyVideoStream(usePiCamera=picam, resolution=resolution, framerate=framerate,
                         frame_q=frameq, rotation=rotate).start()
 
-    mouth = Mouth()
+    mouth = MouthOpen()
     brows = Eyebrows(_args_.ebd, sticky=_args_.stickyclick)
     nose = Nose(_args_.filter, 1 / cam.fps())
-    mouse = MousePointer()
+    mouse = MousePointer(button1=brows, button2=mouth)
     if _args_.debug:
         mouse.close_hidg()
 
@@ -973,7 +1002,7 @@ def start_face_detect_procs(detector, predictor):
             mouth.update(shapes)
             brows.update(shapes)
             nose.update(shapes)
-            mouse.update(nose, brows, mouth)
+            mouse.update(nose)
 
             if _args_.verbose >= 3:
                 line = "{:4} ({:8.3f}, {:8.3f}) ({:8.3f}, {:6.3f}) ({:8.3f}, {:6.3f}) ".format(
@@ -984,14 +1013,12 @@ def start_face_detect_procs(detector, predictor):
                                                                          mouse.accel[mouse.i_accel])
                 print(line)
 
+            _fps_.update()
             if _args_.onraspi:
-                _fps_.update()
                 continue
 
             annotate_frame(frame, shapes, nose, brows, mouse)
-
             cv2.imshow("Demo", frame)
-            _fps_.update()
 
             if cv2.waitKey(1) == 27:
                 break
