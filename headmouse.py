@@ -4,6 +4,7 @@ import argparse
 import math
 import multiprocessing as mp
 import os
+from os.path import getmtime
 import queue
 import shlex
 import signal
@@ -741,6 +742,7 @@ def face_detect_mp(frameq, shapesq, detector, predictor, args):
 
 def face_detect(demoq, detector, predictor):
     global running
+    global restart
     global _args_
     global _fps_
 
@@ -773,6 +775,7 @@ def face_detect(demoq, detector, predictor):
     dim = None
     framenum = 0
     firstframe = True
+    mtime = getmtime(__file__)
     while running:
         pframenum = framenum
         (framenum, frame) = cam.read()
@@ -804,6 +807,13 @@ def face_detect(demoq, detector, predictor):
                               int(faces[0].bottom() / r))
         shapes = predictor(gframe, face)
         shapes = face_utils.shape_to_np(shapes)
+
+        _fps_.stop()
+        if framenum > 5 and framenum % int(2 * _fps_.fps()) == 0:
+            if getmtime(__file__) != mtime:
+                restart = True
+                running = False
+                break
 
         mouth.update(shapes)
         nose.update(shapes)
@@ -944,6 +954,7 @@ def renice(nice, pids):
 
 def start_face_detect_procs(detector, predictor):
     global _fps_
+    global restart
 
     if _args_.verbose > 0:
         print("{} pid {}".format(mp.current_process().name, mp.current_process().pid))
@@ -984,6 +995,7 @@ def start_face_detect_procs(detector, predictor):
 
     firstframe = True
     timeout = None
+    mtime = getmtime(__file__)
     try:
         while True:
             try:
@@ -998,6 +1010,12 @@ def start_face_detect_procs(detector, predictor):
                 timeout = 2 / framerate
                 mouse.maxwidth, mouse.maxheight = cam.framew, cam.frameh
                 _fps_.start()
+
+            _fps_.stop()
+            if framenum > 5 and framenum % int(2 * _fps_.fps()) == 0:
+                if getmtime(__file__) != mtime:
+                    restart = True
+                    break
 
             mouth.update(shapes)
             brows.update(shapes)
@@ -1056,7 +1074,10 @@ def start_face_detect_thread(detector, predictor):
     firstframe = True
     try:
         while running:
-            frame = demoq.get()
+            try:
+                frame = demoq.get(timeout=1)
+            except queue.Empty:
+                continue
             if firstframe:
                 firstframe = False
                 fps.start()
@@ -1080,6 +1101,7 @@ def start_face_detect_thread(detector, predictor):
 
 def main():
     global running
+    global restart
     global _args_
 
     _args_ = parse_arguments()
@@ -1135,11 +1157,17 @@ def main():
             )  # it is the Thread.__class__.__name__
             yappi.get_func_stats(ctx_id=thread.id).print_all()
 
+    if restart:
+        if _args_.verbose > 0:
+            print("\nAuto restarting {}\n".format(' '.join(sys.argv)))
+        os.execv(__file__, sys.argv)
+
     return 0
 
 
 if __name__ == '__main__':
     running = True
+    restart = False
     global _args_
     global _fps_
 
