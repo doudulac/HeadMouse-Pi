@@ -617,7 +617,8 @@ class MousePointer(object):
             if btn['s'] < 0:
                 click |= 1 << (i-1)
             elif btn['s'] == 0 and btn['f'].button_down():
-                btn['s'] = int(round(_fps_.fps() * .4))
+                if i != 1:
+                    btn['s'] = int(round(_fps_.fps() * .4))
                 click |= 1 << (i-1)
 
         self._click = click
