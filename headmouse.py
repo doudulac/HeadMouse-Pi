@@ -1003,14 +1003,23 @@ def start_face_detect_procs(detector, predictor):
     firstframe = True
     timeout = None
     mtime = getmtime(__file__)
+    ooobuf = {}
+    nextframe = 1
     try:
         while True:
             try:
-                framenum, frame, shapes = shapesq.get(timeout=timeout)
-            except queue.Empty:
-                if _args_.verbose > 0:
-                    print("queue delay...low voltage?")
+                framenum, frame, shapes = ooobuf[nextframe]
+            except KeyError:
+                try:
+                    framenum, frame, shapes = shapesq.get(timeout=timeout)
+                except queue.Empty:
+                    if _args_.verbose > 0:
+                        print("queue delay...low voltage?")
+                    continue
+            if framenum != nextframe:
+                ooobuf[framenum] = (framenum, frame, shapes)
                 continue
+            nextframe += 1
 
             if firstframe:
                 firstframe = False
