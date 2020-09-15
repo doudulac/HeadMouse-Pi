@@ -336,12 +336,16 @@ class Eyebrows(object):
         # moutho 48,59
         # mouthi 60,67
 
+        leye = feature_center(shapes[42:48])
+        reye = feature_center(shapes[36:42])
+        pdist = point_distance(leye, reye)
         sep = feature_center(shapes[31:36])
         cen = feature_center(shapes)
         angle = cen[1] - sep[1]
         ebc = feature_center([shapes[19], shapes[24]])
         eyec = feature_center(shapes[36:48])
         ebd = point_distance(ebc, eyec)
+        _r = ebd / pdist
 
         _n = 6
         _s = -2
@@ -382,8 +386,8 @@ class Eyebrows(object):
             self._raised = self._cur_height - past > self.threshold and angle - ang_past < 2.0
 
         if _args_.verbose > 1:
-            print("brows {:.02f} {:.02f} {:.02f} {:.02f} {:.02f} {} {}".format(
-                past, self._cur_height, ang_past, ang, angle, self._raised_count, self._raised))
+            print("brows {:.02f} {:.02f} {:+6.02f} {:+6.02f} {:+6.02f} {:.02f} {:.02f} {:.02f}".format(
+                past, self._cur_height, ang_past, ang, angle, _r, pdist, ebd))
 
     @property
     def cur_height(self):
