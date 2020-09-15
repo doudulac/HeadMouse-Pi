@@ -681,6 +681,8 @@ def annotate_frame(frame, shapes, nose, brows, mouse):
                 cv2.FONT_HERSHEY_DUPLEX, 0.9, (147, 58, 31), 1)
 
     facec = feature_center(shapes)
+    cv2.circle(frame, facec, 4, (128, 0, 255), -1)
+
     draw_landmarks(frame, shapes, facec)
     # frame = face_utils.visualize_facial_landmarks(frame, shapes, [(0,255,0),]*8)
     return frame
@@ -695,9 +697,9 @@ def draw_landmarks(frame, shapes, center):
             p1 = tuple(pts[_l - 1])
             p2 = tuple(pts[_l])
             cv2.line(frame, p1, p2, (0, 255, 0))
-            if _l == 1:
-                cv2.line(frame, center, p1, (0, 255, 255))
-            cv2.line(frame, center, p2, (0, 255, 255))
+            # if _l == 1:
+            #     cv2.line(frame, center, p1, (0, 255, 255))
+            # cv2.line(frame, center, p2, (0, 255, 255))
 
 
 def face_detect_mp(frameq, shapesq, detector, predictor, args):
