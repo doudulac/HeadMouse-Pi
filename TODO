@@ -1,4 +1,3 @@
-TODO debounce single clicks
 TODO docu gadget inst
 TODO docu headmouse inst
 TODO docu headmouse usage
@@ -9,3 +8,4 @@ TODO unlink gestures from actions
 TODO inst on new sd card
 TODO add cam res/fps mode opt
 TODO adjust sensitivity based on head size/ratio
+TODO pause when eyes closed
