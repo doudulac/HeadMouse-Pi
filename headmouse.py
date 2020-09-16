@@ -85,11 +85,6 @@ class MyPiVideoStream:
         self.rawCapture = picamera.array.PiRGBArray(self.camera, size=resolution)
         self.stream = self.camera.capture_continuous(self.rawCapture,
                                                      format="bgr", use_video_port=True)
-        if _args_.debug_video:
-            fourcc = cv2.VideoWriter_fourcc(*'XVID')
-            self.writer = cv2.VideoWriter("testfile.avi", fourcc, framerate, resolution)
-        else:
-            self.writer = None
 
         # initialize the frame and the variable used to indicate
         # if the thread should be stopped
@@ -116,8 +111,6 @@ class MyPiVideoStream:
             # preparation for the next frame
             frame = f.array
             framenum += 1
-            if self.writer is not None:
-                self.writer.write(frame)
             if self.frame_q is not None:
                 self.frame_q.put_nowait((framenum, frame))
             else:
@@ -128,8 +121,6 @@ class MyPiVideoStream:
             # if the thread indicator variable is set, stop the thread
             # and resource camera resources
             if self.stopped:
-                if self.writer is not None:
-                    self.writer.release()
                 self.stream.close()
                 self.rawCapture.close()
                 self.camera.close()
@@ -178,13 +169,6 @@ class MyVideoCapture(object):
         if framerate is not None:
             self.stream.set(cv2.CAP_PROP_FPS, framerate)
 
-        if _args_.debug_video:
-            fourcc = cv2.VideoWriter_fourcc(*'XVID')
-            self.writer = cv2.VideoWriter("testfile.avi", fourcc, 10.0,
-                                          (int(self.stream.get(3)), int(self.stream.get(4))))
-        else:
-            self.writer = None
-
         # initialize the thread name
         self.name = name
 
@@ -211,8 +195,6 @@ class MyVideoCapture(object):
         while True:
             # if the thread indicator variable is set, stop the thread
             if self.stopped:
-                if self.writer is not None:
-                    self.writer.release()
                 if _args_.verbose > 0:
                     print("Frames captured:", framenum)
                     try:
@@ -226,8 +208,6 @@ class MyVideoCapture(object):
             if self.framew is None and frame is not None:
                 (self.frameh, self.framew) = frame.shape[:2]
             framenum += 1
-            if self.writer is not None:
-                self.writer.write(frame)
             if self.frame_q is not None:
                 self.frame_q.put_nowait((framenum, frame))
             else:
@@ -679,15 +659,16 @@ class MousePointer(object):
 
 
 def annotate_frame(frame, shapes, nose, brows, mouse):
-    cv2.circle(frame, (int(mouse.cpos[0]), int(mouse.cpos[1])), 4, (0, 0, 255), -1)
+    if mouse.cpos is not None:
+        cv2.circle(frame, (int(mouse.cpos[0]), int(mouse.cpos[1])), 4, (0, 0, 255), -1)
+        cv2.putText(frame, "ptr : " + str((int(mouse.cpos[0]), int(mouse.cpos[1]))), (90, 270),
+                    cv2.FONT_HERSHEY_DUPLEX, 0.9, (147, 58, 31), 1)
 
     cv2.putText(frame, "brows: {:.2f} {}".format(brows.cur_height, brows.raised), (90, 165),
                 cv2.FONT_HERSHEY_DUPLEX, 0.9, (147, 58, 31), 1)
     cv2.putText(frame, "nose: " + str(nose.position), (90, 200),
                 cv2.FONT_HERSHEY_DUPLEX, 0.9, (147, 58, 31), 1)
     cv2.putText(frame, "dxdy: " + str((mouse.dx, mouse.dy)), (90, 235),
-                cv2.FONT_HERSHEY_DUPLEX, 0.9, (147, 58, 31), 1)
-    cv2.putText(frame, "ptr : " + str((int(mouse.cpos[0]), int(mouse.cpos[1]))), (90, 270),
                 cv2.FONT_HERSHEY_DUPLEX, 0.9, (147, 58, 31), 1)
 
     facec = feature_center(shapes)
@@ -743,7 +724,7 @@ def face_detect_mp(frameq, shapesq, detector, predictor, args):
                                   int(faces[0].bottom() / r))
             shapes = predictor(gframe, face)
             shapes = face_utils.shape_to_np(shapes)
-        if args.onraspi:
+        if args.onraspi and not _args_.debug_video:
             frame = None
         shapesq.put_nowait((framenum, frame, shapes))
 
@@ -776,6 +757,12 @@ def face_detect(demoq, detector, predictor):
 
     cam = MyVideoStream(usePiCamera=picam, resolution=resolution, framerate=framerate,
                         frame_q=frameq, rotation=rotate).start()
+
+    if _args_.debug_video:
+        fourcc = cv2.VideoWriter_fourcc(*'XVID')
+        writer = cv2.VideoWriter("/tmp/testfile.avi", fourcc, framerate, resolution)
+    else:
+        writer = None
 
     mouth = MouthOpen()
     brows = Eyebrows(_args_.ebd, sticky=_args_.stickyclick)
@@ -842,15 +829,22 @@ def face_detect(demoq, detector, predictor):
                                                                      mouse.accel[mouse.i_accel])
             print(line)
 
-        _fps_.update()
-        if _args_.onraspi:
-            continue
+        if not _args_.onraspi or writer is not None:
+            annotate_frame(frame, shapes, nose, brows, mouse)
 
-        annotate_frame(frame, shapes, nose, brows, mouse)
-        demoq.put_nowait(frame)
+        if writer is not None:
+            writer.write(frame)
+
+        if not _args_.onraspi:
+            demoq.put_nowait(frame)
+
+        _fps_.update()
 
     if _args_.verbose > 0 and no_face_frames:
         print('')
+
+    if writer is not None:
+        writer.release()
 
     mouse.send_mouse_relative(0, 0, 0)
     mouse.close_hidg()
@@ -999,6 +993,12 @@ def start_face_detect_procs(detector, predictor):
     cam = MyVideoStream(usePiCamera=picam, resolution=resolution, framerate=framerate,
                         frame_q=frameq, rotation=rotate).start()
 
+    if _args_.debug_video:
+        fourcc = cv2.VideoWriter_fourcc(*'XVID')
+        writer = cv2.VideoWriter("/tmp/testfile.avi", fourcc, framerate, resolution)
+    else:
+        writer = None
+
     mouth = MouthOpen()
     brows = Eyebrows(_args_.ebd, sticky=_args_.stickyclick)
     nose = Nose(_args_.filter, 1 / cam.fps())
@@ -1053,18 +1053,25 @@ def start_face_detect_procs(detector, predictor):
                                                                          mouse.accel[mouse.i_accel])
                 print(line)
 
+            if not _args_.onraspi or writer is not None:
+                annotate_frame(frame, shapes, nose, brows, mouse)
+
+            if writer is not None:
+                writer.write(frame)
+
+            if not _args_.onraspi:
+                cv2.imshow("Demo", frame)
+
+                if cv2.waitKey(1) == 27:
+                    break
+
             _fps_.update()
-            if _args_.onraspi:
-                continue
-
-            annotate_frame(frame, shapes, nose, brows, mouse)
-            cv2.imshow("Demo", frame)
-
-            if cv2.waitKey(1) == 27:
-                break
 
     except KeyboardInterrupt:
         pass
+
+    if writer is not None:
+        writer.release()
 
     mouse.send_mouse_relative(0, 0, 0)
     mouse.close_hidg()
