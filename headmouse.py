@@ -12,6 +12,7 @@ import struct
 import subprocess
 import sys
 from threading import Thread
+import traceback
 
 import cv2
 import dlib
@@ -830,7 +831,14 @@ def face_detect(demoq, detector, predictor):
         mouth.update(shapes)
         nose.update(shapes)
         brows.update(shapes)
-        mouse.update(nose)
+        try:
+            mouse.update(nose)
+        except BrokenPipeError:
+            if _args_.verbose > 0:
+                traceback.print_exc()
+            restart = True
+            running = False
+            break
 
         if _args_.verbose >= 3:
             line = "{:4} ({:8.3f}, {:8.3f}) ({:8.3f}, {:6.3f}) ({:8.3f}, {:6.3f}) ".format(
@@ -1086,6 +1094,11 @@ def start_face_detect_procs(detector, predictor):
 
     except KeyboardInterrupt:
         pass
+
+    except BrokenPipeError:
+        if _args_.verbose > 0:
+            traceback.print_exc()
+        restart = True
 
     if writer is not None:
         writer.release()
