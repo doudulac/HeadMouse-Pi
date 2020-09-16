@@ -11,7 +11,6 @@ import signal
 import struct
 import subprocess
 import sys
-from queue import Empty
 from threading import Thread
 
 import cv2
@@ -143,7 +142,7 @@ class MyPiVideoStream:
         if self.frame_q is not None:
             try:
                 (self.framenum, self.frame) = self.frame_q.get(timeout=1)
-            except Empty:
+            except queue.Empty:
                 pass
         else:
             # time.sleep(.01)
@@ -232,7 +231,7 @@ class MyVideoCapture(object):
         if self.frame_q is not None:
             try:
                 (self.framenum, self.frame) = self.frame_q.get(timeout=1)
-            except Empty:
+            except queue.Empty:
                 pass
         else:
             # time.sleep(.01)
