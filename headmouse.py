@@ -114,7 +114,7 @@ class MyPiVideoStream:
             framenum += 1
             if self.frame_q is not None:
                 try:
-                self.frame_q.put_nowait((framenum, frame))
+                    self.frame_q.put_nowait((framenum, frame))
                 except queue.Full:
                     framenum -= 1
                     self.skipped += 1
@@ -979,10 +979,11 @@ def start_face_detect_procs(detector, predictor):
     if _args_.verbose > 0:
         print("{} pid {}".format(mp.current_process().name, mp.current_process().pid))
     frameq = mp.Queue(5)
-    shapesq = mp.Queue()
+    shapesqs = [mp.Queue()] * _args_.procs
     workers = []
-    for _ in range(_args_.procs):
-        _p = mp.Process(target=face_detect_mp, args=(frameq, shapesq, detector, predictor, _args_))
+    for i in range(_args_.procs):
+        _p = mp.Process(target=face_detect_mp, args=(frameq, shapesqs[i], detector, predictor,
+                                                     _args_))
         _p.start()
         workers.append(_p)
         if _args_.verbose > 0:
@@ -1024,13 +1025,17 @@ def start_face_detect_procs(detector, predictor):
     mtime = getmtime(__file__)
     ooobuf = {}
     nextframe = 1
+    qnum = -1
     try:
         while True:
             try:
                 framenum, frame, shapes = ooobuf[nextframe]
             except KeyError:
                 try:
-                    framenum, frame, shapes = shapesq.get(timeout=timeout)
+                    qnum += 1
+                    if qnum >= len(shapesqs):
+                        qnum = 0
+                    framenum, frame, shapes = shapesqs[qnum].get(timeout=timeout)
                 except queue.Empty:
                     if _args_.verbose > 0:
                         print("queue delay...low voltage?")
