@@ -95,6 +95,7 @@ class MyPiVideoStream:
         self.framenum = None
         self.framew = None
         self.frameh = None
+        self.skipped = 0
 
     def start(self):
         # start the thread to read frames from the video stream
@@ -112,7 +113,11 @@ class MyPiVideoStream:
             frame = f.array
             framenum += 1
             if self.frame_q is not None:
+                try:
                 self.frame_q.put_nowait((framenum, frame))
+                except queue.Full:
+                    framenum -= 1
+                    self.skipped += 1
             else:
                 self.frame = frame
                 self.framenum = framenum
@@ -130,6 +135,7 @@ class MyPiVideoStream:
                         print("Frames orphaned:", self.frame_q.qsize())
                     except (NotImplementedError, AttributeError):
                         pass
+                    print("Frames skipped:", self.skipped)
                 return
 
     def read(self):
@@ -181,6 +187,7 @@ class MyVideoCapture(object):
         self.framenum = None
         self.framew = None
         self.frameh = None
+        self.skipped = 0
 
     def start(self):
         # start the thread to read frames from the video stream
@@ -201,6 +208,8 @@ class MyVideoCapture(object):
                         print("Frames orphaned:", self.frame_q.qsize())
                     except (NotImplementedError, AttributeError):
                         pass
+                    print("Frames skipped:", self.skipped)
+
                 return
 
             # otherwise, read the next frame from the stream
@@ -209,7 +218,11 @@ class MyVideoCapture(object):
                 (self.frameh, self.framew) = frame.shape[:2]
             framenum += 1
             if self.frame_q is not None:
-                self.frame_q.put_nowait((framenum, frame))
+                try:
+                    self.frame_q.put_nowait((framenum, frame))
+                except queue.Full:
+                    framenum -= 1
+                    self.skipped += 1
             else:
                 self.framenum = framenum
                 self.frame = frame
@@ -744,7 +757,7 @@ def face_detect(demoq, detector, predictor):
     r = None
     rotate = None
     picam = _args_.onraspi and not _args_.usbcam
-    frameq = queue.Queue() if _args_.qmode else None
+    frameq = queue.Queue(5) if _args_.qmode else None
     framerate = 20
     resolution = (1280, 720)
     if _args_.onraspi:
@@ -965,7 +978,7 @@ def start_face_detect_procs(detector, predictor):
 
     if _args_.verbose > 0:
         print("{} pid {}".format(mp.current_process().name, mp.current_process().pid))
-    frameq = mp.Queue()
+    frameq = mp.Queue(5)
     shapesq = mp.Queue()
     workers = []
     for _ in range(_args_.procs):
