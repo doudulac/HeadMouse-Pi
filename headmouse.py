@@ -133,6 +133,12 @@ class MyPiVideoStream:
                 self.stream.close()
                 self.rawCapture.close()
                 self.camera.close()
+                if _args_.verbose > 0:
+                    print("Frames captured:", framenum)
+                    try:
+                        print("Frames orphaned:", self.frame_q.qsize())
+                    except (NotImplementedError, AttributeError):
+                        pass
                 return
 
     def read(self):
