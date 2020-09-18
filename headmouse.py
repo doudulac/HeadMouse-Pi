@@ -723,7 +723,7 @@ def face_detect_mp(frameq, shapesq, detector, predictor, args):
             r = args.scalew / float(w)
             dim = (args.scalew, int(h * r))
             if args.verbose > 0 and mp.current_process().name[-2:] == "-1":
-                print("Frame shape: {}\nFrame scaled: {}".format(frame.shape, dim))
+                print("Frame shape: {}\nFrame scaled: {}".format(frame.shape, dim), flush=True)
 
         gframe = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         sgframe = cv2.resize(gframe, dim, interpolation=cv2.INTER_AREA)
@@ -743,7 +743,7 @@ def face_detect_mp(frameq, shapesq, detector, predictor, args):
 
     shapesq.cancel_join_thread()
     if args.verbose > 0:
-        print(mp.current_process().name, "stopped.")
+        print(mp.current_process().name, "stopped.", flush=True)
     return 0
 
 
@@ -1216,9 +1216,12 @@ def main():
             )  # it is the Thread.__class__.__name__
             yappi.get_func_stats(ctx_id=thread.id).print_all()
 
+    sys.stdout.flush()
+    sys.stderr.flush()
+
     if restart:
         if _args_.verbose > 0:
-            print("\nAuto restarting {}\n".format(' '.join(sys.argv)))
+            print("\nAuto restarting {}\n".format(' '.join(sys.argv)), flush=True)
         os.execv(__file__, sys.argv)
 
     return 0
