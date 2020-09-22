@@ -404,7 +404,7 @@ class Eyebrows(object):
 
 
 class Nose(object):
-    def __init__(self, use_kalman=False, kalman_dt=None):
+    def __init__(self, use_kalman=False, fps=None):
         self._positions = None
         self.nose_raw = [0, 0]
         self._dx = None
@@ -413,7 +413,9 @@ class Nose(object):
         self._ax = None
         self._ay = None
         if use_kalman:
-            self._kf = kalmanfilter_init(kalman_dt)
+            if fps is None:
+                fps = 20
+            self._kf = kalmanfilter_dim4_init(dt=1 / fps, Q=2.0, R=2.0)
         else:
             self._kf = None
 
@@ -890,9 +892,7 @@ def feature_center(shapes):
     return centx, centy
 
 
-def kalmanfilter_init(dt=None):
-    if dt is None:
-        dt = 1 / 20
+def kalmanfilter_dim4_init(dt=1 / 20, Q=2.0, R=2.0):
     f = KalmanFilter(dim_x=4, dim_z=2)
     # State Transition matrix
     f.F = np.array([[1., dt, 0., 0.],
@@ -900,18 +900,36 @@ def kalmanfilter_init(dt=None):
                     [0., 0., 1., dt],
                     [0., 0., 0., 1.]])
     # Process noise matrix
-    q = Q_discrete_white_noise(dim=2, dt=dt, var=2)
+    q = Q_discrete_white_noise(dim=2, dt=dt, var=Q)
     f.Q = block_diag(q, q)
     # Measurement function
     f.H = np.array([[1., 0., 0., 0.],
                     [0., 0., 1., 0.]])
     # Measurement noise matrix
-    f.R = np.array([[2., 0.],
-                    [0., 2.]])
+    f.R = np.array([[R, 0.],
+                    [0., R]])
     # Current state estimate
     f.x = np.array([[0., 0., 0., 0.]]).T
     # Current state covariance matrix
     f.P = np.eye(4) * 1000.
+    return f
+
+
+def kalmanfilter_dim2_init(dt=1 / 20, Q=2.0, R=2.0):
+    f = KalmanFilter(dim_x=2, dim_z=1)
+    # State Transition matrix
+    f.F = np.array([[1., dt],
+                    [0., 1.]])
+    # Process noise matrix
+    f.Q = Q_discrete_white_noise(dim=2, dt=dt, var=Q)
+    # Measurement function
+    f.H = np.array([[1., 0.]])
+    # Measurement noise matrix
+    f.R = np.array([[R]])
+    # Current state estimate
+    f.x = np.array([[0., 0.]]).T
+    # Current state covariance matrix
+    f.P = np.eye(2) * 1000.
     return f
 
 
