@@ -403,6 +403,53 @@ class Eyebrows(object):
         return self._raised is True
 
 
+class Eyes(object):
+    def __init__(self, ear_threshold=None, fps=None):
+        self._open = False
+        if ear_threshold is None:
+            ear_threshold = .15
+        self._ear_threshold = ear_threshold
+        if fps is None:
+            fps = 20
+        dt = 1.0 / fps
+        self._kf = kalmanfilter_dim2_init(dt=dt, Q=1 ** 2, R=.05)
+
+    def update(self, shapes):
+        if shapes is None:
+            return
+
+        # reye 36,41
+        # leye 42,47
+
+        red = (point_distance(shapes[37], shapes[41]) + point_distance(shapes[38], shapes[40])) / \
+              (2.0 * point_distance(shapes[36], shapes[39]))
+        led = (point_distance(shapes[43], shapes[47]) + point_distance(shapes[44], shapes[46])) / \
+              (2.0 * point_distance(shapes[42], shapes[45]))
+        ear = (red + led) / 2
+
+        self._kf.predict()
+        self._kf.update(ear)
+        if self._kf.x[0][0] < self._ear_threshold:
+            self._open = False
+        else:
+            self._open = True
+
+        if _args_.debug_eyes:
+            print("eyes {:5.02f} {:5.02f} {:6.03f} {}".format(
+                ear, self._kf.x[0][0], self._kf.x[1][0], "O" if self._open else "."
+            ))
+
+    @property
+    def open(self):
+        return self._open
+
+    def button_up(self):
+        return self.open
+
+    def button_down(self):
+        return not self.button_up()
+
+
 class Nose(object):
     def __init__(self, use_kalman=False, fps=None):
         self._positions = None
@@ -415,7 +462,8 @@ class Nose(object):
         if use_kalman:
             if fps is None:
                 fps = 20
-            self._kf = kalmanfilter_dim4_init(dt=1 / fps, Q=2.0, R=2.0)
+            dt = 1.0 / fps
+            self._kf = kalmanfilter_dim4_init(dt=dt, Q=2.0, R=2.0)
         else:
             self._kf = None
 
@@ -497,7 +545,8 @@ class Nose(object):
 
 
 class MousePointer(object):
-    def __init__(self, button1=None, button2=None, button3=None, mindeltathresh=None):
+    def __init__(self, button1=None, button2=None, button3=None, pausebtn=None,
+                 mindeltathresh=None):
         self._fd = None
         self.open_hidg()
         self._dx = None
@@ -506,6 +555,8 @@ class MousePointer(object):
         self.btn = {1: {'s': 0, 'f': button1},
                     2: {'s': 0, 'f': button2},
                     3: {'s': 0, 'f': button3}, }
+        self.pausebtn = {'s': 0, 'f': pausebtn}
+        self._paused = False
         self.cpos = None
         self.track_cpos = self._fd is None
         self.maxheight = None
@@ -630,10 +681,39 @@ class MousePointer(object):
 
         return click
 
+    def process_pause(self):
+        btn = self.pausebtn
+
+        if btn['f'] is None:
+            return False
+
+        if btn['s'] > 0:
+            btn['s'] -= 1
+            if btn['f'].button_up():
+                # reset
+                btn['s'] = 0
+            elif btn['s'] == 0:
+                # wait for button up to activate
+                btn['s'] = -1
+        elif btn['s'] < 0:
+            if btn['f'].button_up():
+                btn['s'] = 0
+                self._paused = not self._paused
+                if _args_.verbose > 0:
+                    print('{}pause'.format('' if self.paused else 'un'))
+
+        if btn['s'] == 0 and btn['f'].button_down():
+            btn['s'] = int(round(_fps_.fps() * 1.5))
+
     def update(self, nose):
-        dx, dy = self.process_movement(nose)
-        click = self.process_clicks()
-        self.send_mouse_relative(click, dx, dy)
+        self.process_pause()
+        if not self.paused:
+            dx, dy = self.process_movement(nose)
+            click = self.process_clicks()
+            self.send_mouse_relative(click, dx, dy)
+        elif self.click != 0:
+            self._click = 0
+            self.send_mouse_relative(0, 0, 0)
 
     def send_mouse_relative(self, click, dx, dy):
         if _args_.verbose > 1 and click:
@@ -663,6 +743,10 @@ class MousePointer(object):
     @property
     def click(self):
         return self._click
+
+    @property
+    def paused(self):
+        return self._paused
 
     @property
     def smoothness(self):
@@ -780,9 +864,10 @@ def face_detect(demoq, detector, predictor):
         writer = None
 
     mouth = MouthOpen()
+    eyes = Eyes(ear_threshold=_args_.ear, fps=cam.fps())
     brows = Eyebrows(_args_.ebd, sticky=_args_.stickyclick)
-    nose = Nose(_args_.filter, 1 / cam.fps())
-    mouse = MousePointer(button1=brows, button2=mouth)
+    nose = Nose(_args_.filter, fps=cam.fps())
+    mouse = MousePointer(button1=brows, button2=mouth, pausebtn=eyes)
     if _args_.debug:
         mouse.close_hidg()
 
@@ -831,6 +916,7 @@ def face_detect(demoq, detector, predictor):
                 break
 
         mouth.update(shapes)
+        eyes.update(shapes)
         nose.update(shapes)
         brows.update(shapes)
         try:
@@ -959,6 +1045,8 @@ def parse_arguments():
                         help="X gain")
     parser.add_argument("-y", "--ygain", default=1.0, type=float,
                         help="Y gain")
+    parser.add_argument("--ear", default=.15,
+                        help="eye aspect ratio threshold (default: .15)")
     parser.add_argument("--onraspi", action="store_true",
                         help="force raspi mode")
     parser.add_argument("--debug", action="store_true",
@@ -1039,9 +1127,10 @@ def start_face_detect_procs(detector, predictor):
         writer = None
 
     mouth = MouthOpen()
+    eyes = Eyes(ear_threshold=_args_.ear, fps=cam.fps())
     brows = Eyebrows(_args_.ebd, sticky=_args_.stickyclick)
-    nose = Nose(_args_.filter, 1 / cam.fps())
-    mouse = MousePointer(button1=brows, button2=mouth)
+    nose = Nose(_args_.filter, fps=cam.fps())
+    mouse = MousePointer(button1=brows, button2=mouth, pausebtn=eyes)
     if _args_.debug:
         mouse.close_hidg()
 
@@ -1083,6 +1172,7 @@ def start_face_detect_procs(detector, predictor):
                     break
 
             mouth.update(shapes)
+            eyes.update(shapes)
             brows.update(shapes)
             nose.update(shapes)
             mouse.update(nose)
