@@ -509,6 +509,12 @@ class Nose(object):
         self._ax = self.vel[0] - self.prev_vel[0]
         self._ay = self.vel[1] - self.prev_vel[1]
 
+        if _args_.debug_nose:
+            line = "nose ({:7.03f}, {:7.03f}) ({:8.03f}, {:8.03f}) ({:8.03f}, {:8.03f}) "
+            line += "({:7.03f}, {:6.02f}) ({:7.03f}, {:6.02f})"
+            print(line.format(self.nose_raw[0], self.nose_raw[1], self.position[0], self.vel[0],
+                              self.position[1], self.vel[1], self.dx, self.ax, self.dy, self.ay))
+
     @property
     def ax(self):
         return self._ax
@@ -652,6 +658,9 @@ class MousePointer(object):
                 else:
                     self.cpos[1] = 0
 
+        if _args_.debug_mouse:
+            print("mouse {:2} {}".format(self.i_accel, self.accel[self.i_accel]))
+
         return dx, dy
 
     def process_clicks(self):
@@ -673,11 +682,11 @@ class MousePointer(object):
                     btn['s'] = 0
 
             if btn['s'] < 0:
-                click |= 1 << (i-1)
+                click |= 1 << (i - 1)
             elif btn['s'] == 0 and btn['f'].button_down():
                 if i != 1:
                     btn['s'] = int(round(_fps_.fps() * .4))
-                click |= 1 << (i-1)
+                click |= 1 << (i - 1)
 
         self._click = click
 
@@ -843,19 +852,23 @@ def face_detect(demoq, detector, predictor):
     global _fps_
 
     _fps_ = FPS()
-    r = None
     rotate = None
     picam = _args_.onraspi and not _args_.usbcam
     frameq = queue.Queue(5) if _args_.qmode else None
-    framerate = 20
     resolution = (1280, 720)
-    if _args_.onraspi:
-        if not _args_.usbcam:
-            # resolution = (320, 240)
-            # framerate = 24
+    framerate = 30
+    if _args_.onraspi and not _args_.usbcam:
+        if _args_.camera_mode == 1:
+            resolution = (320, 240)
+        elif _args_.camera_mode == 2:
             resolution = (640, 480)
-            framerate = 20
-            rotate = 180
+        elif _args_.camera_mode == 3:
+            resolution = (800, 600)
+            framerate = 15
+        elif _args_.camera_mode == 4:
+            resolution = (1024, 768)
+            framerate = 10
+        rotate = 180
 
     cam = MyVideoStream(usePiCamera=picam, resolution=resolution, framerate=framerate,
                         frame_q=frameq, rotation=rotate).start()
@@ -875,6 +888,7 @@ def face_detect(demoq, detector, predictor):
         mouse.close_hidg()
 
     no_face_frames = 0
+    r = None
     dim = None
     framenum = 0
     firstframe = True
@@ -899,9 +913,10 @@ def face_detect(demoq, detector, predictor):
         sgframe = cv2.resize(gframe, dim, interpolation=cv2.INTER_AREA)
         faces = detector(sgframe)
         if len(faces) == 0:
-            no_face_frames += 1
-            if _args_.verbose > 0:
-                print(no_face_frames, 'no face', end='\r')
+            if not mouse.paused:
+                no_face_frames += 1
+                if _args_.verbose > 0:
+                    print(no_face_frames, 'no face', end='\r')
             continue
 
         face = dlib.rectangle(int(faces[0].left() / r),
@@ -930,15 +945,6 @@ def face_detect(demoq, detector, predictor):
             restart = True
             running = False
             break
-
-        if _args_.verbose >= 3:
-            line = "{:4} ({:8.3f}, {:8.3f}) ({:8.3f}, {:6.3f}) ({:8.3f}, {:6.3f}) ".format(
-                framenum, nose.nose_raw[0], nose.nose_raw[1], nose.position[0], nose.vel[0],
-                nose.position[1], nose.vel[1])
-            line += "({:3}, {:5.2f}) ({:3}, {:5.2f}) {:2} {}".format(nose.dx, nose.ax, nose.dy,
-                                                                     nose.ay, mouse.i_accel,
-                                                                     mouse.accel[mouse.i_accel])
-            print(line)
 
         if not _args_.onraspi or writer is not None:
             annotate_frame(frame, shapes, nose, brows, mouse)
@@ -1063,6 +1069,10 @@ def parse_arguments():
                         help="")
     parser.add_argument("--debug-mouth", action="store_true",
                         help="")
+    parser.add_argument("--debug-nose", action="store_true",
+                        help="")
+    parser.add_argument("--debug-mouse", action="store_true",
+                        help="")
 
     args = parser.parse_args()
     return args
@@ -1175,7 +1185,7 @@ def start_face_detect_procs(detector, predictor):
                 continue
             nextframe += 1
 
-            if shapes is None:
+            if shapes is None and not mouse.paused:
                 no_face_frames += 1
                 if _args_.verbose > 0:
                     print(no_face_frames, 'no face', end='\r', flush=True)
@@ -1197,15 +1207,6 @@ def start_face_detect_procs(detector, predictor):
             brows.update(shapes)
             nose.update(shapes)
             mouse.update(nose)
-
-            if _args_.verbose >= 3:
-                line = "{:4} ({:8.3f}, {:8.3f}) ({:8.3f}, {:6.3f}) ({:8.3f}, {:6.3f}) ".format(
-                    framenum, nose.nose_raw[0], nose.nose_raw[1], nose.position[0], nose.vel[0],
-                    nose.position[1], nose.vel[1])
-                line += "({:3}, {:5.2f}) ({:3}, {:5.2f}) {:2} {}".format(nose.dx, nose.ax, nose.dy,
-                                                                         nose.ay, mouse.i_accel,
-                                                                         mouse.accel[mouse.i_accel])
-                print(line)
 
             if not _args_.onraspi or writer is not None:
                 annotate_frame(frame, shapes, nose, brows, mouse)
