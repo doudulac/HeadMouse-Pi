@@ -73,6 +73,7 @@ class MyPiVideoStream:
     def __init__(self, resolution=(320, 240), framerate=30, frame_q=None, **kwargs):
         # initialize the camera
         import picamera.array
+        resolution = picamera.PiResolution(resolution[0], resolution[1]).pad()
         self.camera = picamera.PiCamera(resolution=resolution, framerate=framerate)
 
         self.frame_q = frame_q
