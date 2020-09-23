@@ -294,7 +294,7 @@ class MouthOpen(object):
         else:
             self._open = _r >= .40
 
-        if _args_.verbose > 1:
+        if _args_.debug_mouth:
             print("mouth {:.02f} {:.02f} {:.02f} {:.02f} {:.02f}".format(
                 vpast, self._cur_vdist, hpast, self._cur_hdist, _r))
 
@@ -384,7 +384,7 @@ class Eyebrows(object):
         else:
             self._raised = self._cur_height - past > self.threshold and angle - ang_past < 2.0
 
-        if _args_.verbose > 1:
+        if _args_.debug_brows:
             print("brows {:.02f} {:.02f} {:+6.02f} {:+6.02f} {:+6.02f} {:.02f} {:.02f} {:.02f}".format(
                 past, self._cur_height, ang_past, ang, angle, _r, pdist, ebd))
 
@@ -1053,6 +1053,12 @@ def parse_arguments():
                         help="disable mouse reports to host")
     parser.add_argument("--debug-video", action="store_true",
                         help="save video to testfile")
+    parser.add_argument("--debug-brows", action="store_true",
+                        help="")
+    parser.add_argument("--debug-eyes", action="store_true",
+                        help="")
+    parser.add_argument("--debug-mouth", action="store_true",
+                        help="")
 
     args = parser.parse_args()
     return args
