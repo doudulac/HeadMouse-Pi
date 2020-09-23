@@ -385,8 +385,9 @@ class Eyebrows(object):
             self._raised = self._cur_height - past > self.threshold and angle - ang_past < 2.0
 
         if _args_.debug_brows:
-            print("brows {:.02f} {:.02f} {:+6.02f} {:+6.02f} {:+6.02f} {:.02f} {:.02f} {:.02f}".format(
-                past, self._cur_height, ang_past, ang, angle, _r, pdist, ebd))
+            line = "brows {:.02f} {:.02f} {:+6.02f} {:+6.02f} {:+6.02f} "
+            line += "{:.02f} {:.02f} {:.02f}"
+            print(line.format(past, self._cur_height, ang_past, ang, angle, _r, pdist, ebd))
 
     @property
     def cur_height(self):
@@ -771,7 +772,6 @@ def annotate_frame(frame, shapes, nose, brows, mouse):
                 cv2.FONT_HERSHEY_DUPLEX, 0.9, (147, 58, 31), 1)
 
     facec = feature_center(shapes)
-    cv2.circle(frame, facec, 4, (128, 0, 255), -1)
 
     draw_landmarks(frame, shapes, facec)
     # frame = face_utils.visualize_facial_landmarks(frame, shapes, [(0,255,0),]*8)
@@ -781,6 +781,8 @@ def annotate_frame(frame, shapes, nose, brows, mouse):
 def draw_landmarks(frame, shapes, center):
     if shapes is None:
         return
+
+    cv2.circle(frame, center, 4, (128, 0, 255), -1)
     for (i, j) in face_utils.FACIAL_LANDMARKS_68_IDXS.values():
         pts = shapes[i:j]
         for _l in range(1, len(pts)):
