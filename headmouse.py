@@ -809,8 +809,8 @@ def face_detect_mp(frameq, shapesq, detector, predictor, args):
         if firstframe:
             firstframe = False
             (h, w) = frame.shape[:2]
-            r = args.scalew / float(w)
-            dim = (args.scalew, int(h * r))
+            r = 320 / float(w)
+            dim = (320, int(h * r))
             if args.verbose > 0 and mp.current_process().name[-2:] == "-1":
                 print("Frame shape: {}\nFrame scaled: {}".format(frame.shape, dim), flush=True)
 
@@ -890,8 +890,8 @@ def face_detect(demoq, detector, predictor):
             _fps_.start()
             (h, w) = frame.shape[:2]
             mouse.maxheight, mouse.maxwidth = (h, w)
-            r = _args_.scalew / float(w)
-            dim = (_args_.scalew, int(h * r))
+            r = 320 / float(w)
+            dim = (320, int(h * r))
             if _args_.verbose > 0:
                 print("Frame shape: {}\nFrame scaled: {}".format(frame.shape, dim))
 
@@ -1024,6 +1024,9 @@ def kalmanfilter_dim2_init(dt=1 / 20, Q=2.0, R=2.0):
 
 def parse_arguments():
     parser = argparse.ArgumentParser()
+    parser.add_argument("-c", "--camera-mode", default=2, type=int, choices=range(1, 5),
+                        help="camera mode 1:320x240@30 2:640x480@30 3:800x600@15 4:1024x768@10" +
+                             " (default: 2)")
     parser.add_argument("-e", "--ebd", default=4.0, type=float,
                         help="Eyebrow distance for click (default: 4.0)")
     parser.add_argument("-f", "--filter", action="store_true",
@@ -1034,16 +1037,14 @@ def parse_arguments():
                         help="enable profiling")
     parser.add_argument("-q", "--qmode", action="store_true",
                         help="enable queue mode")
-    parser.add_argument("-r", "--procs", default=2, type=int,
-                        help="number of procs (default: 2)")
+    parser.add_argument("-r", "--procs", default=5, type=int,
+                        help="number of procs (default: 5)")
     parser.add_argument("-s", "--smoothness", default=3, type=int, choices=range(1, 9),
                         help="smoothness 1-8 (default: 3)")
     parser.add_argument("-u", "--usbcam", action="store_true",
                         help="Use usb camera instead of PiCamera")
     parser.add_argument("-v", "--verbose", action="count", default=0,
                         help="Verbosity")
-    parser.add_argument("-w", "--scalew", default=320, type=int,
-                        help="scale width (default: 320)")
     parser.add_argument("-x", "--xgain", default=1.0, type=float,
                         help="X gain")
     parser.add_argument("-y", "--ygain", default=1.0, type=float,
@@ -1116,15 +1117,20 @@ def start_face_detect_procs(detector, predictor):
     _fps_ = FPS()
     rotate = None
     picam = _args_.onraspi and not _args_.usbcam
-    framerate = 20
     resolution = (1280, 720)
-    if _args_.onraspi:
-        if not _args_.usbcam:
-            # resolution = (320, 240)
-            # framerate = 24
+    framerate = 30
+    if _args_.onraspi and not _args_.usbcam:
+        if _args_.camera_mode == 1:
+            resolution = (320, 240)
+        elif _args_.camera_mode == 2:
             resolution = (640, 480)
-            framerate = 20
-            rotate = 180
+        elif _args_.camera_mode == 3:
+            resolution = (800, 600)
+            framerate = 15
+        elif _args_.camera_mode == 4:
+            resolution = (1024, 768)
+            framerate = 10
+        rotate = 180
 
     cam = MyVideoStream(usePiCamera=picam, resolution=resolution, framerate=framerate,
                         frame_q=frameq, rotation=rotate).start()
@@ -1176,7 +1182,7 @@ def start_face_detect_procs(detector, predictor):
 
             if firstframe:
                 firstframe = False
-                timeout = 2 / framerate
+                timeout = 3 / framerate
                 mouse.maxwidth, mouse.maxheight = cam.framew, cam.frameh
                 _fps_.start()
 
