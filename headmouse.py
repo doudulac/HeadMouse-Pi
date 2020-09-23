@@ -465,7 +465,7 @@ class Nose(object):
             if fps is None:
                 fps = 20
             dt = 1.0 / fps
-            self._kf = kalmanfilter_dim4_init(dt=dt, Q=2.0, R=2.0)
+            self._kf = kalmanfilter_dim4_init(dt=dt, Q=10 ** 2, R=.05)
         else:
             self._kf = None
 
