@@ -1140,6 +1140,7 @@ def start_face_detect_procs(detector, predictor):
     if _args_.debug:
         mouse.close_hidg()
 
+    no_face_frames = 0
     firstframe = True
     timeout = None
     mtime = getmtime(__file__)
@@ -1164,6 +1165,11 @@ def start_face_detect_procs(detector, predictor):
                 ooobuf[framenum] = (framenum, frame, shapes)
                 continue
             nextframe += 1
+
+            if shapes is None:
+                no_face_frames += 1
+                if _args_.verbose > 0:
+                    print(no_face_frames, 'no face', end='\r', flush=True)
 
             if firstframe:
                 firstframe = False
@@ -1235,6 +1241,7 @@ def start_face_detect_procs(detector, predictor):
     if _args_.verbose > 0:
         print("Elapsed time: {:.1f}s".format(_fps_.elapsed()))
         print("         FPS: {:.3f}/{}".format(_fps_.fps(), cfps))
+        print("     No face: {}".format(no_face_frames))
 
 
 def start_face_detect_thread(detector, predictor):
