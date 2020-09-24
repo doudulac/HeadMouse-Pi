@@ -637,7 +637,7 @@ class MousePointer(object):
                 self.cpos[0] += dx
                 self.cpos[1] += dy
             except TypeError:
-                self.cpos = nose.position
+                self.cpos = [int(self.maxwidth/2), int(self.maxheight/2)]
 
             if self.cpos[0] > self.maxwidth:
                 if self.wrap:
@@ -661,7 +661,7 @@ class MousePointer(object):
                     self.cpos[1] = 0
 
         if _args_.debug_mouse:
-            print("mouse {:2} {}".format(self.i_accel, self.accel[self.i_accel]))
+            print("mouse {} {:2} {}".format(self.cpos, self.i_accel, self.accel[self.i_accel]))
 
         return dx, dy
 
@@ -1200,7 +1200,10 @@ def start_face_detect_procs(detector, predictor):
             if firstframe:
                 firstframe = False
                 timeout = 3 / framerate
-                mouse.maxwidth, mouse.maxheight = cam.framew, cam.frameh
+                if _args_.onraspi:
+                    mouse.maxwidth, mouse.maxheight = 32767, 32767
+                else:
+                    mouse.maxwidth, mouse.maxheight = cam.framew, cam.frameh
                 _fps_.start()
 
             _fps_.stop()
