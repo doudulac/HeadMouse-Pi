@@ -112,6 +112,8 @@ class MyPiVideoStream:
             # grab the frame from the stream and clear the stream in
             # preparation for the next frame
             frame = f.array
+            if self.framew is None and frame is not None:
+                (self.frameh, self.framew) = frame.shape[:2]
             framenum += 1
             if self.frame_q is not None:
                 try:
