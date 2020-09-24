@@ -568,6 +568,7 @@ class MousePointer(object):
         self.pausebtn = {'s': 0, 'f': pausebtn}
         self._paused = False
         self.cpos = None
+        self.angle = None
         self.track_cpos = self._fd is None
         self.maxheight = None
         self.maxwidth = None
@@ -727,6 +728,9 @@ class MousePointer(object):
         elif self.click != 0:
             self._click = 0
             self.send_mouse_relative(0, 0, 0)
+        else:
+            x, y = self.process_circle_pattern()
+            self.send_mouse_absolute(x, y, 0)
 
     def send_mouse_relative(self, click, dx, dy):
         if _args_.verbose > 1 and click:
@@ -749,6 +753,27 @@ class MousePointer(object):
 
         self._smoothness = value
         self._motionweight = math.log10(float(self._smoothness) + 1)
+
+    def process_circle_pattern(self):
+        radius = self.maxwidth / 32
+        omega = math.radians(360) / _fps_.fps()
+
+        try:
+            x = self.cpos[0]
+            y = self.cpos[1]
+            self.angle = self.angle + omega
+            x = x + radius * omega * math.cos(self.angle + math.pi / 2)
+            y = y - radius * omega * math.sin(self.angle + math.pi / 2)
+        except TypeError:
+            center = [self.maxwidth / 2, self.maxheight / 2]
+            self.angle = math.radians(90)
+            x = center[0] + radius * math.cos(self.angle)
+            y = center[1] - radius * math.sin(self.angle)
+
+        x, y = int(round(x)), int(round(y))
+        self.cpos = [x, y]
+
+        return x, y
 
     @property
     def dx(self):
