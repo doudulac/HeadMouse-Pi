@@ -253,6 +253,78 @@ class MyVideoCapture(object):
         return self.stream.get(cv2.CAP_PROP_FPS)
 
 
+class Face(object):
+    def __init__(self):
+        self._angs_x = None
+        self._angs_y = None
+        self._cur_angle = None
+        self._ave_angle = None
+        self._center = None
+
+    def update(self, shapes):
+        if shapes is None:
+            return
+
+        # nose 27,30
+        # nostr 31,35
+
+        sep = feature_center(shapes[31:36])
+        cen = feature_center(shapes)
+        angle_x = cen[0] - sep[0]
+        angle_y = cen[1] - sep[1]
+
+        _n = 6
+        _s = -2
+        if self._angs_y is None:
+            self._angs_x = [angle_x, ] * _n
+            self._angs_y = [angle_y, ] * _n
+        else:
+            self._angs_x.append(self._angs_x.pop(0))
+            self._angs_x[-1] = angle_x
+            self._angs_y.append(self._angs_y.pop(0))
+            self._angs_y[-1] = angle_y
+
+        self._cur_angle = [sum(self._angs_x[_s:]) / len(self._angs_x[_s:]),
+                           sum(self._angs_y[_s:]) / len(self._angs_y[_s:])]
+        self._ave_angle = [sum(self._angs_x[:_s]) / len(self._angs_x[:_s]),
+                           sum(self._angs_y[:_s]) / len(self._angs_y[:_s])]
+        self._center = cen
+
+        if _args_.debug_face:
+            print("face {:6.02f} {:6.02f} {:6.02f} {:6.02f}".format(self._ave_angle[0],
+                                                                    self._cur_angle[0],
+                                                                    self._ave_angle[1],
+                                                                    self._cur_angle[1]))
+
+    @property
+    def center(self):
+        return self._center
+
+    @property
+    def angle(self):
+        return self._cur_angle
+
+    @property
+    def ave_angle(self):
+        return self._ave_angle
+
+    @property
+    def x_angle(self):
+        return self._cur_angle[0]
+
+    @property
+    def x_ave_angle(self):
+        return self._ave_angle[0]
+
+    @property
+    def y_angle(self):
+        return self._cur_angle[1]
+
+    @property
+    def y_ave_angle(self):
+        return self._ave_angle[1]
+
+
 class MouthOpen(object):
     def __init__(self):
         self._vdists = None
@@ -313,11 +385,11 @@ class MouthOpen(object):
 
 
 class Eyebrows(object):
-    def __init__(self, threshold, sticky=False):
+    def __init__(self, face, threshold, sticky=False):
+        self.face = face
         self.threshold = threshold
 
         self._ebds = None
-        self._angs = None
         self._cur_height = None
         self._raised = False
         self._raised_count = 0
@@ -341,9 +413,6 @@ class Eyebrows(object):
         leye = feature_center(shapes[42:48])
         reye = feature_center(shapes[36:42])
         pdist = point_distance(leye, reye)
-        sep = feature_center(shapes[31:36])
-        cen = feature_center(shapes)
-        angle = cen[1] - sep[1]
         ebc = feature_center([shapes[19], shapes[24]])
         eyec = feature_center(shapes[36:48])
         ebd = point_distance(ebc, eyec)
@@ -353,24 +422,21 @@ class Eyebrows(object):
         _s = -2
         if self._ebds is None:
             self._ebds = [ebd, ] * _n
-            self._angs = [ebd, ] * _n
         else:
             self._ebds.append(self._ebds.pop(0))
             self._ebds[-1] = ebd
-            self._angs.append(self._angs.pop(0))
-            self._angs[-1] = angle
 
         self._cur_height = sum(self._ebds[_s:]) / len(self._ebds[_s:])
         past = sum(self._ebds[:_s]) / len(self._ebds[:_s])
-        ang = sum(self._angs[_s:]) / len(self._angs[_s:])
-        ang_past = sum(self._angs[:_s]) / len(self._angs[:_s])
 
+        d_angle = self.face.y_angle - self.face.y_ave_angle
         if self.sticky:
-            raised = self._cur_height - past > self.threshold and angle - ang_past < 2.0
+            raised = self._cur_height - past > self.threshold and d_angle < 2.0
             if not self._raised:
                 self._raised = raised
             else:
-                lowered = past - self._cur_height > self.threshold * .60 and ang_past - angle < 2.0
+                d_angle = self.face.y_ave_angle - self.face.y_angle
+                lowered = past - self._cur_height > self.threshold * .60 and d_angle < 2.0
                 if not self._sticky_raised or self._raised_count > 0:
                     self._raised = not lowered
                 elif raised:
@@ -385,12 +451,11 @@ class Eyebrows(object):
                 self._raised_count = 0
 
         else:
-            self._raised = self._cur_height - past > self.threshold and angle - ang_past < 2.0
+            self._raised = self._cur_height - past > self.threshold and d_angle < 2.0
 
         if _args_.debug_brows:
-            line = "brows {:.02f} {:.02f} {:+6.02f} {:+6.02f} {:+6.02f} "
-            line += "{:.02f} {:.02f} {:.02f}"
-            print(line.format(past, self._cur_height, ang_past, ang, angle, _r, pdist, ebd))
+            line = "brows {:.02f} {:.02f} {:.02f} {:.02f} {:.02f}"
+            print(line.format(past, self._cur_height, _r, pdist, ebd))
 
     @property
     def cur_height(self):
@@ -860,11 +925,11 @@ def face_detect_mp(frameq, shapesq, detector, predictor, args):
         if len(faces) == 0:
             shapes = None
         else:
-            face = dlib.rectangle(int(faces[0].left() / r),
-                                  int(faces[0].top() / r),
-                                  int(faces[0].right() / r),
-                                  int(faces[0].bottom() / r))
-            shapes = predictor(gframe, face)
+            face_rect = dlib.rectangle(int(faces[0].left() / r),
+                                       int(faces[0].top() / r),
+                                       int(faces[0].right() / r),
+                                       int(faces[0].bottom() / r))
+            shapes = predictor(gframe, face_rect)
             shapes = face_utils.shape_to_np(shapes)
         if args.onraspi and not _args_.debug_video:
             frame = None
@@ -910,9 +975,10 @@ def face_detect(demoq, detector, predictor):
     else:
         writer = None
 
+    face = Face()
     mouth = MouthOpen()
     eyes = Eyes(ear_threshold=_args_.ear, fps=cam.fps())
-    brows = Eyebrows(_args_.ebd, sticky=_args_.stickyclick)
+    brows = Eyebrows(face=face, threshold=_args_.ebd, sticky=_args_.stickyclick)
     nose = Nose(_args_.filter, fps=cam.fps())
     mouse = MousePointer(button1=brows, button2=mouth, pausebtn=eyes)
     if _args_.debug:
@@ -950,11 +1016,11 @@ def face_detect(demoq, detector, predictor):
                     print(no_face_frames, 'no face', end='\r')
             continue
 
-        face = dlib.rectangle(int(faces[0].left() / r),
-                              int(faces[0].top() / r),
-                              int(faces[0].right() / r),
-                              int(faces[0].bottom() / r))
-        shapes = predictor(gframe, face)
+        face_rect = dlib.rectangle(int(faces[0].left() / r),
+                                   int(faces[0].top() / r),
+                                   int(faces[0].right() / r),
+                                   int(faces[0].bottom() / r))
+        shapes = predictor(gframe, face_rect)
         shapes = face_utils.shape_to_np(shapes)
 
         _fps_.stop()
@@ -964,6 +1030,7 @@ def face_detect(demoq, detector, predictor):
                 running = False
                 break
 
+        face.update(shapes)
         mouth.update(shapes)
         eyes.update(shapes)
         nose.update(shapes)
@@ -1094,6 +1161,8 @@ def parse_arguments():
                         help="disable mouse reports to host")
     parser.add_argument("--debug-video", action="store_true",
                         help="save video to testfile")
+    parser.add_argument("--debug-face", action="store_true",
+                        help="")
     parser.add_argument("--debug-brows", action="store_true",
                         help="")
     parser.add_argument("--debug-eyes", action="store_true",
@@ -1180,9 +1249,10 @@ def start_face_detect_procs(detector, predictor):
     else:
         writer = None
 
+    face = Face()
     mouth = MouthOpen()
     eyes = Eyes(ear_threshold=_args_.ear, fps=cam.fps())
-    brows = Eyebrows(_args_.ebd, sticky=_args_.stickyclick)
+    brows = Eyebrows(face=face, threshold=_args_.ebd, sticky=_args_.stickyclick)
     nose = Nose(_args_.filter, fps=cam.fps())
     mouse = MousePointer(button1=brows, button2=mouth, pausebtn=eyes)
     if _args_.debug:
@@ -1234,6 +1304,7 @@ def start_face_detect_procs(detector, predictor):
                     restart = True
                     break
 
+            face.update(shapes)
             mouth.update(shapes)
             eyes.update(shapes)
             brows.update(shapes)
