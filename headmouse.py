@@ -1153,8 +1153,6 @@ def start_face_detect_procs(detector, predictor):
         if _args_.verbose > 0:
             print("{} pid {}".format(_p.name, _p.pid))
 
-    renice(-10, [p.pid for p in workers])
-
     _fps_ = FPS()
     rotate = None
     picam = _args_.onraspi and not _args_.usbcam
