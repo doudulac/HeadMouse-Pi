@@ -575,7 +575,6 @@ class MousePointer(object):
         self.wrap = False
         self.xgain = _args_.xgain if _args_.xgain is not None else 1.0
         self.ygain = _args_.ygain if _args_.ygain is not None else 1.0
-        self.wrap = False
         self.mindeltathresh = mindeltathresh if mindeltathresh is not None else 1
         self._smoothness = None
         self._motionweight = None
