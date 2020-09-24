@@ -620,8 +620,9 @@ class Nose(object):
 
 
 class MousePointer(object):
-    def __init__(self, button1=None, button2=None, button3=None, pausebtn=None,
+    def __init__(self, face, button1=None, button2=None, button3=None, pausebtn=None,
                  mindeltathresh=None):
+        self.face = face
         self._fd = None
         self.open_hidg()
         self._dx = None
@@ -763,7 +764,11 @@ class MousePointer(object):
         btn = self.pausebtn
 
         if btn['f'] is None:
-            return False
+            return
+
+        if abs(self.face.x_angle) > 5.0 or self.face.y_angle < -5.0 or self.face.y_angle > 0:
+            btn['s'] = 0
+            return
 
         if btn['s'] > 0:
             btn['s'] -= 1
@@ -980,7 +985,7 @@ def face_detect(demoq, detector, predictor):
     eyes = Eyes(ear_threshold=_args_.ear, fps=cam.fps())
     brows = Eyebrows(face=face, threshold=_args_.ebd, sticky=_args_.stickyclick)
     nose = Nose(_args_.filter, fps=cam.fps())
-    mouse = MousePointer(button1=brows, button2=mouth, pausebtn=eyes)
+    mouse = MousePointer(face=face, button1=brows, button2=mouth, pausebtn=eyes)
     if _args_.debug:
         mouse.close_hidg()
 
@@ -1254,7 +1259,7 @@ def start_face_detect_procs(detector, predictor):
     eyes = Eyes(ear_threshold=_args_.ear, fps=cam.fps())
     brows = Eyebrows(face=face, threshold=_args_.ebd, sticky=_args_.stickyclick)
     nose = Nose(_args_.filter, fps=cam.fps())
-    mouse = MousePointer(button1=brows, button2=mouth, pausebtn=eyes)
+    mouse = MousePointer(face=face, button1=brows, button2=mouth, pausebtn=eyes)
     if _args_.debug:
         mouse.close_hidg()
 
