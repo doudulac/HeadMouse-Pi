@@ -580,7 +580,7 @@ class Nose(object):
         else:
             self._kf.predict()
             self._kf.update(kfu)
-            nose = [self._kf.x[0][0], self._kf.x[2][0]]
+            nose = [int(round(self._kf.x[0][0])), int(round(self._kf.x[2][0]))]
             vel = [self._kf.x[1][0], self._kf.x[3][0]]
 
         if self._positions is None:
