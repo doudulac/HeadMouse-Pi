@@ -254,14 +254,26 @@ class MyVideoCapture(object):
 
 
 class Face(object):
-    def __init__(self):
+    def __init__(self, fps):
         self._angs_x = None
         self._angs_y = None
         self._cur_angle = None
         self._ave_angle = None
         self._center = None
 
+        self.mouth = MouthOpen()
+        self.eyes = Eyes(ear_threshold=_args_.ear, fps=fps)
+        self.brows = Eyebrows(face=self, threshold=_args_.ebd, sticky=_args_.stickyclick)
+        self.nose = Nose(_args_.filter, fps=fps)
+
     def update(self, shapes):
+        self._update_posture(shapes)
+        self.mouth.update(shapes)
+        self.eyes.update(shapes)
+        self.brows.update(shapes)
+        self.nose.update(shapes)
+
+    def _update_posture(self, shapes):
         if shapes is None:
             return
 
@@ -620,18 +632,17 @@ class Nose(object):
 
 
 class MousePointer(object):
-    def __init__(self, face, button1=None, button2=None, button3=None, pausebtn=None,
-                 mindeltathresh=None):
+    def __init__(self, face, mindeltathresh=None):
         self.face = face
         self._fd = None
         self.open_hidg()
         self._dx = None
         self._dy = None
         self._click = None
-        self.btn = {1: {'s': 0, 'f': button1},
-                    2: {'s': 0, 'f': button2},
-                    3: {'s': 0, 'f': button3}, }
-        self.pausebtn = {'s': 0, 'f': pausebtn}
+        self.btn = {1: {'s': 0, 'f': self.face.brows},
+                    2: {'s': 0, 'f': self.face.mouth},
+                    3: {'s': 0, 'f': None}, }
+        self.pausebtn = {'s': 0, 'f': self.face.eyes}
         self._paused = False
         self.cpos = None
         self.angle = None
@@ -669,7 +680,8 @@ class MousePointer(object):
             self._fd.close()
             self._fd = None
 
-    def process_movement(self, nose):
+    def process_movement(self):
+        nose = self.face.nose
         dx = nose.dx
         dy = nose.dy
         dx *= self.xgain
@@ -788,10 +800,10 @@ class MousePointer(object):
         if btn['s'] == 0 and btn['f'].button_down():
             btn['s'] = int(round(_fps_.fps() * 1.5))
 
-    def update(self, nose):
+    def update(self):
         self.process_pause()
         if not self.paused:
-            dx, dy = self.process_movement(nose)
+            dx, dy = self.process_movement()
             click = self.process_clicks()
             self.send_mouse_relative(click, dx, dy)
         elif self.click != 0:
@@ -869,7 +881,9 @@ class MousePointer(object):
         return self._motionweight
 
 
-def annotate_frame(frame, shapes, nose, brows, mouse):
+def annotate_frame(frame, shapes, face, mouse):
+    nose = face.nose
+    brows = face.brows
     if mouse.cpos is not None:
         cv2.circle(frame, (int(mouse.cpos[0]), int(mouse.cpos[1])), 4, (0, 0, 255), -1)
         cv2.putText(frame, "ptr : " + str((int(mouse.cpos[0]), int(mouse.cpos[1]))), (90, 270),
@@ -882,9 +896,7 @@ def annotate_frame(frame, shapes, nose, brows, mouse):
     cv2.putText(frame, "dxdy: " + str((mouse.dx, mouse.dy)), (90, 235),
                 cv2.FONT_HERSHEY_DUPLEX, 0.9, (147, 58, 31), 1)
 
-    facec = feature_center(shapes)
-
-    draw_landmarks(frame, shapes, facec)
+    draw_landmarks(frame, shapes, face.center)
     # frame = face_utils.visualize_facial_landmarks(frame, shapes, [(0,255,0),]*8)
     return frame
 
@@ -980,12 +992,8 @@ def face_detect(demoq, detector, predictor):
     else:
         writer = None
 
-    face = Face()
-    mouth = MouthOpen()
-    eyes = Eyes(ear_threshold=_args_.ear, fps=cam.fps())
-    brows = Eyebrows(face=face, threshold=_args_.ebd, sticky=_args_.stickyclick)
-    nose = Nose(_args_.filter, fps=cam.fps())
-    mouse = MousePointer(face=face, button1=brows, button2=mouth, pausebtn=eyes)
+    face = Face(fps=framerate)
+    mouse = MousePointer(face=face)
     if _args_.debug:
         mouse.close_hidg()
 
@@ -1036,12 +1044,8 @@ def face_detect(demoq, detector, predictor):
                 break
 
         face.update(shapes)
-        mouth.update(shapes)
-        eyes.update(shapes)
-        nose.update(shapes)
-        brows.update(shapes)
         try:
-            mouse.update(nose)
+            mouse.update()
         except BrokenPipeError:
             if _args_.verbose > 0:
                 traceback.print_exc()
@@ -1050,7 +1054,7 @@ def face_detect(demoq, detector, predictor):
             break
 
         if not _args_.onraspi or writer is not None:
-            annotate_frame(frame, shapes, nose, brows, mouse)
+            annotate_frame(frame, shapes, face, mouse)
 
         if writer is not None:
             writer.write(frame)
@@ -1254,12 +1258,8 @@ def start_face_detect_procs(detector, predictor):
     else:
         writer = None
 
-    face = Face()
-    mouth = MouthOpen()
-    eyes = Eyes(ear_threshold=_args_.ear, fps=cam.fps())
-    brows = Eyebrows(face=face, threshold=_args_.ebd, sticky=_args_.stickyclick)
-    nose = Nose(_args_.filter, fps=cam.fps())
-    mouse = MousePointer(face=face, button1=brows, button2=mouth, pausebtn=eyes)
+    face = Face(fps=framerate)
+    mouse = MousePointer(face=face)
     if _args_.debug:
         mouse.close_hidg()
 
@@ -1310,14 +1310,10 @@ def start_face_detect_procs(detector, predictor):
                     break
 
             face.update(shapes)
-            mouth.update(shapes)
-            eyes.update(shapes)
-            brows.update(shapes)
-            nose.update(shapes)
-            mouse.update(nose)
+            mouse.update()
 
             if not _args_.onraspi or writer is not None:
-                annotate_frame(frame, shapes, nose, brows, mouse)
+                annotate_frame(frame, shapes, face, mouse)
 
             if writer is not None:
                 writer.write(frame)
