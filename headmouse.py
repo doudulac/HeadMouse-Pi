@@ -260,20 +260,23 @@ class Face(object):
         self._cur_angle = None
         self._ave_angle = None
         self._center = None
+        self._shapes = None
 
-        self.mouth = MouthOpen()
-        self.eyes = Eyes(ear_threshold=_args_.ear, fps=fps)
+        self.mouth = MouthOpen(face=self)
+        self.eyes = Eyes(face=self, ear_threshold=_args_.ear, fps=fps)
         self.brows = Eyebrows(face=self, threshold=_args_.ebd, sticky=_args_.stickyclick)
-        self.nose = Nose(_args_.filter, fps=fps)
+        self.nose = Nose(face=self, use_kalman=_args_.filter, fps=fps)
 
     def update(self, shapes):
-        self._update_posture(shapes)
-        self.mouth.update(shapes)
-        self.eyes.update(shapes)
-        self.brows.update(shapes)
-        self.nose.update(shapes)
+        self._shapes = shapes
+        self._update_posture()
+        self.mouth.update()
+        self.eyes.update()
+        self.brows.update()
+        self.nose.update()
 
-    def _update_posture(self, shapes):
+    def _update_posture(self):
+        shapes = self.shapes
         if shapes is None:
             return
 
@@ -309,6 +312,10 @@ class Face(object):
                                                                     self._cur_angle[1]))
 
     @property
+    def shapes(self):
+        return self._shapes
+
+    @property
     def center(self):
         return self._center
 
@@ -338,14 +345,16 @@ class Face(object):
 
 
 class MouthOpen(object):
-    def __init__(self):
+    def __init__(self, face):
+        self.face = face
         self._vdists = None
         self._cur_vdist = None
         self._hdists = None
         self._cur_hdist = None
         self._open = False
 
-    def update(self, shapes):
+    def update(self):
+        shapes = self.face.shapes
         if shapes is None:
             return
 
@@ -408,7 +417,8 @@ class Eyebrows(object):
         self.sticky = sticky
         self._sticky_raised = False
 
-    def update(self, shapes):
+    def update(self):
+        shapes = self.face.shapes
         if shapes is None:
             return
 
@@ -485,7 +495,8 @@ class Eyebrows(object):
 
 
 class Eyes(object):
-    def __init__(self, ear_threshold=None, fps=None):
+    def __init__(self, face, ear_threshold=None, fps=None):
+        self.face = face
         self._open = False
         if ear_threshold is None:
             ear_threshold = .15
@@ -496,7 +507,8 @@ class Eyes(object):
         self._kf = kalmanfilter_dim2_init(dt=dt, Q=1 ** 2, R=.05)
         self._pupilary_dist = None
 
-    def update(self, shapes):
+    def update(self):
+        shapes = self.face.shapes
         if shapes is None:
             return
 
@@ -541,7 +553,8 @@ class Eyes(object):
 
 
 class Nose(object):
-    def __init__(self, use_kalman=False, fps=None):
+    def __init__(self, face, use_kalman=False, fps=None):
+        self.face = face
         self._positions = None
         self.nose_raw = [0, 0]
         self._dx = None
@@ -557,7 +570,7 @@ class Nose(object):
         else:
             self._kf = None
 
-    def update(self, shapes):
+    def update(self):
         # jaw 0,16
         # rbrow 17,21
         # lbrow 22,26
@@ -567,6 +580,7 @@ class Nose(object):
         # leye 42,47
         # moutho 48,59
         # mouthi 60,67
+        shapes = self.face.shapes
         if shapes is not None:
             self.nose_raw = shapes[30]
             kfu = self.nose_raw
