@@ -494,6 +494,7 @@ class Eyes(object):
             fps = 20
         dt = 1.0 / fps
         self._kf = kalmanfilter_dim2_init(dt=dt, Q=1 ** 2, R=.05)
+        self._pupilary_dist = None
 
     def update(self, shapes):
         if shapes is None:
@@ -501,6 +502,10 @@ class Eyes(object):
 
         # reye 36,41
         # leye 42,47
+
+        rec = feature_center(shapes[36:42])
+        lec = feature_center(shapes[42:48])
+        self._pupilary_dist = point_distance(rec, lec)
 
         red = (point_distance(shapes[37], shapes[41]) + point_distance(shapes[38], shapes[40])) / \
               (2.0 * point_distance(shapes[36], shapes[39]))
@@ -523,6 +528,10 @@ class Eyes(object):
     @property
     def open(self):
         return self._open
+
+    @property
+    def pupilary_dist(self):
+        return self._pupilary_dist
 
     def button_up(self):
         return self.open
