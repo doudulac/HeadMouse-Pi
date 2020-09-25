@@ -943,7 +943,8 @@ def face_detect_mp(frameq, shapesq, detector, predictor, args):
             r = 320 / float(w)
             dim = (320, int(h * r))
             if args.verbose > 0 and mp.current_process().name[-2:] == "-1":
-                print("Frame shape: {}\nFrame scaled: {}".format(frame.shape, dim), flush=True)
+                msg = "Frame shape: {}\nFrame scaled: {}".format(frame.shape, dim)
+                shapesq.put_nowait((-1, msg, mp.current_process().name))
 
         gframe = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         sgframe = cv2.resize(gframe, dim, interpolation=cv2.INTER_AREA)
@@ -962,8 +963,7 @@ def face_detect_mp(frameq, shapesq, detector, predictor, args):
         shapesq.put_nowait((framenum, frame, shapes))
 
     shapesq.cancel_join_thread()
-    if args.verbose > 0:
-        print(mp.current_process().name, "stopped.", flush=True)
+
     return 0
 
 
@@ -1035,7 +1035,7 @@ def face_detect(demoq, detector, predictor):
             if not mouse.paused:
                 no_face_frames += 1
                 if _args_.verbose > 0:
-                    print(no_face_frames, 'no face', end='\r')
+                    print(no_face_frames, 'no face', end='\r', flush=True)
             continue
 
         face_rect = dlib.rectangle(int(faces[0].left() / r),
@@ -1076,6 +1076,9 @@ def face_detect(demoq, detector, predictor):
     if _args_.verbose > 0 and no_face_frames:
         print('')
 
+    if _args_.verbose > 0:
+        print("Shutting down ...", flush=True)
+
     if writer is not None:
         writer.release()
 
@@ -1090,6 +1093,7 @@ def face_detect(demoq, detector, predictor):
     if _args_.verbose > 0:
         print("Elapsed time: {:.1f}s".format(_fps_.elapsed()))
         print("         FPS: {:.3f}/{}".format(_fps_.fps(), cfps))
+        print("     No face: {}".format(no_face_frames))
 
 
 def feature_center(shapes):
@@ -1221,6 +1225,7 @@ def renice(nice, pids):
     pstr = " ".join(["-p {}".format(p) for p in _pids])
     cmd = shlex.split("/usr/bin/sudo /usr/bin/renice {} {}".format(nice, pstr))
     subprocess.Popen(cmd, stdout=stdout, stderr=stderr).wait(timeout=5)
+    sys.stdout.flush()
 
 
 def start_face_detect_procs(detector, predictor):
@@ -1291,10 +1296,14 @@ def start_face_detect_procs(detector, predictor):
                     framenum, frame, shapes = shapesqs[qnum].get(timeout=timeout)
                 except queue.Empty:
                     if _args_.verbose > 0 and framerate - _fps_.fps() > 2:
-                        print("queue delay, fps[{:.02f}]...low voltage?".format(_fps_.fps()))
+                        print("queue delay, fps[{:.02f}]...low voltage?".format(_fps_.fps()),
+                              flush=True)
                     continue
             if framenum != nextframe:
-                ooobuf[framenum] = (framenum, frame, shapes)
+                if framenum < 0 and _args_.verbose >= abs(framenum):
+                    print(frame, flush=True)
+                else:
+                    ooobuf[framenum] = (framenum, frame, shapes)
                 continue
             nextframe += 1
 
@@ -1343,6 +1352,12 @@ def start_face_detect_procs(detector, predictor):
             traceback.print_exc()
         restart = True
 
+    if _args_.verbose > 0 and no_face_frames:
+        print('')
+
+    if _args_.verbose > 0:
+        print("Shutting down ...", flush=True)
+
     if writer is not None:
         writer.release()
 
@@ -1358,8 +1373,10 @@ def start_face_detect_procs(detector, predictor):
         frameq.put('STOP')
     for p in workers:
         if _args_.verbose > 0:
-            print("Joining {}".format(p.name))
+            print("Joining {}...".format(p.name), end="", flush=True)
         p.join()
+        if _args_.verbose > 0:
+            print("stopped.", flush=True)
 
     if _args_.verbose > 0:
         print("Elapsed time: {:.1f}s".format(_fps_.elapsed()))
@@ -1409,6 +1426,9 @@ def main():
 
     _args_ = parse_arguments()
 
+    if _args_.verbose > 0:
+        print("Starting {}".format(' '.join(sys.argv)), flush=True)
+
     if _args_.debug and _args_.verbose < 2:
         _args_.verbose = 2
 
@@ -1439,7 +1459,7 @@ def main():
     detector = dlib.get_frontal_face_detector()
     predictor = dlib.shape_predictor(model_path)
     if _args_.verbose > 0:
-        print("done.")
+        print("done.", flush=True)
 
     renice(-10, mp.current_process().pid)
 
@@ -1465,7 +1485,7 @@ def main():
 
     if restart:
         if _args_.verbose > 0:
-            print("\nAuto restarting {}\n".format(' '.join(sys.argv)), flush=True)
+            print("\nAuto restarting...\n", flush=True)
         os.execv(__file__, sys.argv)
 
     return 0
