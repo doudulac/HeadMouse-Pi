@@ -1290,8 +1290,8 @@ def start_face_detect_procs(detector, predictor):
                         qnum = 0
                     framenum, frame, shapes = shapesqs[qnum].get(timeout=timeout)
                 except queue.Empty:
-                    if _args_.verbose > 0:
-                        print("queue delay...low voltage?")
+                    if _args_.verbose > 0 and framerate - _fps_.fps() > 2:
+                        print("queue delay, fps[{:.02f}]...low voltage?".format(_fps_.fps()))
                     continue
             if framenum != nextframe:
                 ooobuf[framenum] = (framenum, frame, shapes)
