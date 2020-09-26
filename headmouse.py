@@ -257,7 +257,7 @@ class Face(object):
     def __init__(self, fps):
         self._angs_x = None
         self._angs_y = None
-        self._cur_angle = None
+        self._cur_angle = [0, 0]
         self._ave_angle = None
         self._center = None
         self._shapes = None
