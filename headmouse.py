@@ -311,6 +311,12 @@ class Face(object):
                                                                     self._ave_angle[1],
                                                                     self._cur_angle[1]))
 
+    def facing_camera(self):
+        if abs(self.x_angle) > 5.0 or self.y_angle < -5.0 or self.y_angle > 0:
+            return False
+        else:
+            return True
+
     @property
     def shapes(self):
         return self._shapes
@@ -801,7 +807,7 @@ class MousePointer(object):
         if btn['f'] is None:
             return
 
-        if abs(self.face.x_angle) > 5.0 or self.face.y_angle < -5.0 or self.face.y_angle > 0:
+        if not self.face.facing_camera():
             btn['s'] = 0
             return
 
@@ -832,7 +838,7 @@ class MousePointer(object):
         elif self.click != 0:
             self._click = 0
             self.send_mouse_relative(0, 0, 0)
-        else:
+        elif self.face.shapes is not None:
             x, y = self.process_circle_pattern()
             self.send_mouse_absolute(x, y, 0)
 
@@ -860,7 +866,10 @@ class MousePointer(object):
 
     def process_circle_pattern(self):
         radius = self.maxwidth / 32
-        omega = math.radians(360) / _fps_.fps()
+        if self.face.facing_camera():
+            omega = 1.75 * math.radians(360) / _fps_.fps()
+        else:
+            omega = .75 * math.radians(360) / _fps_.fps()
 
         try:
             x = self.cpos[0]
