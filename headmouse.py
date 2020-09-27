@@ -485,6 +485,11 @@ class Eyebrows(object):
             line = "brows {:.02f} {:.02f} {:.02f} {:.02f} {:.02f}"
             print(line.format(past, self._cur_height, _r, pdist, ebd))
 
+    def reset(self):
+        self._raised = False
+        self._raised_count = 0
+        self._sticky_raised = False
+
     @property
     def cur_height(self):
         return self._cur_height
@@ -823,6 +828,7 @@ class MousePointer(object):
             if btn['f'].button_up():
                 btn['s'] = 0
                 self._paused = not self._paused
+                self.face.brows.reset()
                 if _args_.verbose > 0:
                     print('{}pause'.format('' if self.paused else 'un'))
 
