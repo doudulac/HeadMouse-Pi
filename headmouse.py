@@ -418,6 +418,7 @@ class Eyebrows(object):
 
         self._ebds = None
         self._cur_height = None
+        self._ave_height = None
         self._raised = False
         self._raised_count = 0
         self.sticky = sticky
@@ -455,16 +456,17 @@ class Eyebrows(object):
             self._ebds[-1] = ebd
 
         self._cur_height = sum(self._ebds[_s:]) / len(self._ebds[_s:])
-        past = sum(self._ebds[:_s]) / len(self._ebds[:_s])
+        self._ave_height = sum(self._ebds[:_s]) / len(self._ebds[:_s])
 
         d_angle = self.face.y_angle - self.face.y_ave_angle
         if self.sticky:
-            raised = self._cur_height - past > self.threshold and d_angle < 2.0
+            raised = self._cur_height - self._ave_height > self.threshold and d_angle < 2.0
             if not self._raised:
                 self._raised = raised
             else:
                 d_angle = self.face.y_ave_angle - self.face.y_angle
-                lowered = past - self._cur_height > self.threshold * .60 and d_angle < 2.0
+                lowered = self._ave_height - self._cur_height > self.threshold * .60 and \
+                    d_angle < 2.0
                 if not self._sticky_raised or self._raised_count > 0:
                     self._raised = not lowered
                 elif raised:
@@ -472,18 +474,18 @@ class Eyebrows(object):
 
             if self._raised and not self._sticky_raised:
                 self._raised_count += 1
-                if self._raised_count > int(round(_fps_.fps() * .5)):
+                if self._raised_count > int(round(_fps_.fps() * .750)):
                     self._sticky_raised = True
                     self._raised_count = 0
             else:
                 self._raised_count = 0
 
         else:
-            self._raised = self._cur_height - past > self.threshold and d_angle < 2.0
+            self._raised = self._cur_height - self._ave_height > self.threshold and d_angle < 2.0
 
         if _args_.debug_brows:
             line = "brows {:.02f} {:.02f} {:.02f} {:.02f} {:.02f}"
-            print(line.format(past, self._cur_height, _r, pdist, ebd))
+            print(line.format(self._ave_height, self._cur_height, _r, pdist, ebd))
 
     def reset(self):
         self._raised = False
@@ -493,6 +495,10 @@ class Eyebrows(object):
     @property
     def cur_height(self):
         return self._cur_height
+
+    @property
+    def ave_height(self):
+        return self._ave_height
 
     @property
     def raised(self):
