@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import argparse
+import logging
 import math
 import multiprocessing as mp
 import os
@@ -133,12 +134,12 @@ class MyPiVideoStream:
                 self.rawCapture.close()
                 self.camera.close()
                 if _args_.verbose > 0:
-                    print("Frames captured:", framenum)
+                    log.info("Frames captured: {}".format(framenum))
                     try:
-                        print("Frames orphaned:", self.frame_q.qsize())
+                        log.info("Frames orphaned: {}".format(self.frame_q.qsize()))
                     except (NotImplementedError, AttributeError):
                         pass
-                    print("Frames skipped:", self.skipped)
+                    log.info("Frames skipped: {}".format(self.skipped))
                 return
 
     def read(self):
@@ -206,12 +207,12 @@ class MyVideoCapture(object):
             # if the thread indicator variable is set, stop the thread
             if self.stopped:
                 if _args_.verbose > 0:
-                    print("Frames captured:", framenum)
+                    log.info("Frames captured: {}".format(framenum))
                     try:
-                        print("Frames orphaned:", self.frame_q.qsize())
+                        log.info("Frames orphaned: {}".format(self.frame_q.qsize()))
                     except (NotImplementedError, AttributeError):
                         pass
-                    print("Frames skipped:", self.skipped)
+                    log.info("Frames skipped: {}".format(self.skipped))
 
                 return
 
@@ -306,10 +307,10 @@ class Face(object):
         self._center = cen
 
         if _args_.debug_face:
-            print("face {:6.02f} {:6.02f} {:6.02f} {:6.02f}".format(self._ave_angle[0],
-                                                                    self._cur_angle[0],
-                                                                    self._ave_angle[1],
-                                                                    self._cur_angle[1]))
+            log.info("face {:6.02f} {:6.02f} {:6.02f} {:6.02f}".format(self._ave_angle[0],
+                                                                       self._cur_angle[0],
+                                                                       self._ave_angle[1],
+                                                                       self._cur_angle[1]))
 
     def facing_camera(self):
         if abs(self.x_angle) > 5.0 or self.y_angle < -5.0 or self.y_angle > 0:
@@ -397,7 +398,7 @@ class MouthOpen(object):
             self._open = _r >= .40
 
         if _args_.debug_mouth:
-            print("mouth {:.02f} {:.02f} {:.02f} {:.02f} {:.02f}".format(
+            log.info("mouth {:.02f} {:.02f} {:.02f} {:.02f} {:.02f}".format(
                 vpast, self._cur_vdist, hpast, self._cur_hdist, _r))
 
     @property
@@ -485,7 +486,7 @@ class Eyebrows(object):
 
         if _args_.debug_brows:
             line = "brows {:.02f} {:.02f} {:.02f} {:.02f} {:.02f}"
-            print(line.format(self._ave_height, self._cur_height, _r, pdist, ebd))
+            log.info(line.format(self._ave_height, self._cur_height, _r, pdist, ebd))
 
     def reset(self):
         self._raised = False
@@ -550,7 +551,7 @@ class Eyes(object):
             self._open = True
 
         if _args_.debug_eyes:
-            print("eyes {:5.02f} {:5.02f} {:6.03f} {}".format(
+            log.info("eyes {:5.02f} {:5.02f} {:6.03f} {}".format(
                 ear, self._kf.x[0][0], self._kf.x[1][0], "O" if self._open else "."
             ))
 
@@ -631,8 +632,8 @@ class Nose(object):
         if _args_.debug_nose:
             line = "nose ({:7.03f}, {:7.03f}) ({:8.03f}, {:8.03f}) ({:8.03f}, {:8.03f}) "
             line += "({:7.03f}, {:6.02f}) ({:7.03f}, {:6.02f})"
-            print(line.format(self.nose_raw[0], self.nose_raw[1], self.position[0], self.vel[0],
-                              self.position[1], self.vel[1], self.dx, self.ax, self.dy, self.ay))
+            log.info(line.format(self.nose_raw[0], self.nose_raw[1], self.position[0], self.vel[0],
+                                 self.position[1], self.vel[1], self.dx, self.ax, self.dy, self.ay))
 
     @property
     def ax(self):
@@ -779,7 +780,7 @@ class MousePointer(object):
                     self.cpos[1] = 0
 
         if _args_.debug_mouse:
-            print("mouse {} {:2} {}".format(self.cpos, self.i_accel, self.accel[self.i_accel]))
+            log.info("mouse {} {:2} {}".format(self.cpos, self.i_accel, self.accel[self.i_accel]))
 
         return dx, dy
 
@@ -836,7 +837,7 @@ class MousePointer(object):
                 self._paused = not self._paused
                 self.face.brows.reset()
                 if _args_.verbose > 0:
-                    print('{}pause'.format('' if self.paused else 'un'))
+                    log.info('{}pause'.format('' if self.paused else 'un'))
 
         if btn['s'] == 0 and btn['f'].button_down():
             btn['s'] = int(round(_fps_.fps() * 1.5))
@@ -856,7 +857,7 @@ class MousePointer(object):
 
     def send_mouse_relative(self, click, dx, dy):
         if _args_.verbose > 1 and click:
-            print('click', click)
+            log.info('click', click)
 
         if self._fd is not None:
             report = struct.pack('<2b2h', 2, click, dx, dy)
@@ -925,6 +926,48 @@ class MousePointer(object):
         return self._motionweight
 
 
+class MyLogger(object):
+    def __init__(self):
+        self._root = logging.root
+        for h in self._root.handlers:
+            self._root.removeHandler(h)
+        self._hndlr = logging.StreamHandler(stream=sys.stdout)
+        self._fmt = logging.Formatter(fmt='{asctime}| {message}', datefmt='%Y%m%d %H:%M:%S',
+                                      style='{')
+        self._hndlr.setFormatter(self._fmt)
+        self._root.addHandler(self._hndlr)
+        self._root.setLevel(logging.WARNING)
+
+        self._ends = []
+
+    def setLevel(self, level):
+        self._root.setLevel(level)
+
+    def log(self, level, msg, *args, **kwargs):
+        if len(self._ends):
+            if self._hndlr.formatter is not None:
+                self._hndlr.formatter = None
+        elif self._hndlr.formatter is None:
+            self._hndlr.formatter = self._fmt
+
+        popend = kwargs.pop('popend', False)
+        if popend:
+            self._hndlr.terminator = self._ends.pop()
+
+        end = kwargs.pop('end', None)
+        if end is not None:
+            self._ends.append(self._hndlr.terminator)
+            self._hndlr.terminator = end
+
+        self._root.log(level, msg, *args, **kwargs)
+
+    def debug(self, msg, end=None, popend=False, *args, **kwargs):
+        self.log(logging.DEBUG, msg, end, popend, *args, **kwargs)
+
+    def info(self, msg, *args, **kwargs):
+        self.log(logging.INFO, msg, *args, **kwargs)
+
+
 def annotate_frame(frame, shapes, face, mouse):
     nose = face.nose
     brows = face.brows
@@ -978,7 +1021,9 @@ def face_detect_mp(frameq, shapesq, detector, predictor, args):
             r = 320 / float(w)
             dim = (320, int(h * r))
             if args.verbose > 0 and mp.current_process().name[-2:] == "-1":
-                msg = "Frame shape: {}\nFrame scaled: {}".format(frame.shape, dim)
+                msg = " Frame shape: {}".format(frame.shape)
+                shapesq.put_nowait((-1, msg, mp.current_process().name))
+                msg = "Frame scaled: {}".format(dim)
                 shapesq.put_nowait((-1, msg, mp.current_process().name))
 
         gframe = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
@@ -1061,7 +1106,8 @@ def face_detect(demoq, detector, predictor):
             r = 320 / float(w)
             dim = (320, int(h * r))
             if _args_.verbose > 0:
-                print("Frame shape: {}\nFrame scaled: {}".format(frame.shape, dim))
+                log.info(" Frame shape: {}".format(frame.shape))
+                log.info("Frame scaled: {}".format(dim))
 
         gframe = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         sgframe = cv2.resize(gframe, dim, interpolation=cv2.INTER_AREA)
@@ -1070,7 +1116,7 @@ def face_detect(demoq, detector, predictor):
             if not mouse.paused:
                 no_face_frames += 1
                 if _args_.verbose > 0:
-                    print(no_face_frames, 'no face', end='\r', flush=True)
+                    log.debug('{} no face'.format(no_face_frames))
             continue
 
         face_rect = dlib.rectangle(int(faces[0].left() / r),
@@ -1108,11 +1154,8 @@ def face_detect(demoq, detector, predictor):
 
         _fps_.update()
 
-    if _args_.verbose > 0 and no_face_frames:
-        print('')
-
     if _args_.verbose > 0:
-        print("Shutting down ...", flush=True)
+        log.info("Shutting down ...")
 
     if writer is not None:
         writer.release()
@@ -1126,9 +1169,9 @@ def face_detect(demoq, detector, predictor):
     cam.join()
 
     if _args_.verbose > 0:
-        print("Elapsed time: {:.1f}s".format(_fps_.elapsed()))
-        print("         FPS: {:.3f}/{}".format(_fps_.fps(), cfps))
-        print("     No face: {}".format(no_face_frames))
+        log.info("Elapsed time: {:.1f}s".format(_fps_.elapsed()))
+        log.info("         FPS: {:.3f}/{}".format(_fps_.fps(), cfps))
+        log.info("     No face: {}".format(no_face_frames))
 
 
 def feature_center(shapes):
@@ -1250,17 +1293,25 @@ def renice(nice, pids):
         _pids = pids
 
     if _args_.verbose:
-        print("Adjusting process priority.")
-        stdout = None
-        stderr = None
+        log.info("Adjusting process priority.")
+        stdout = subprocess.PIPE
+        stderr = subprocess.STDOUT
     else:
         stdout = subprocess.DEVNULL
         stderr = stdout
 
     pstr = " ".join(["-p {}".format(p) for p in _pids])
     cmd = shlex.split("/usr/bin/sudo /usr/bin/renice {} {}".format(nice, pstr))
-    subprocess.Popen(cmd, stdout=stdout, stderr=stderr).wait(timeout=5)
-    sys.stdout.flush()
+    p = subprocess.Popen(cmd, stdout=stdout, stderr=stderr)
+    try:
+        outs = p.communicate(timeout=5)[0]
+    except TimeoutError:
+        p.kill()
+        outs = p.communicate()[0]
+
+    if _args_.verbose:
+        outs = outs.decode('utf8').rstrip('\n')
+        log.info(outs)
 
 
 def start_face_detect_procs(detector, predictor):
@@ -1268,7 +1319,7 @@ def start_face_detect_procs(detector, predictor):
     global restart
 
     if _args_.verbose > 0:
-        print("{} pid {}".format(mp.current_process().name, mp.current_process().pid))
+        log.info("{} pid {}".format(mp.current_process().name, mp.current_process().pid))
     frameq = mp.Queue(5)
     shapesqs = [mp.Queue()] * _args_.procs
     workers = []
@@ -1278,7 +1329,7 @@ def start_face_detect_procs(detector, predictor):
         _p.start()
         workers.append(_p)
         if _args_.verbose > 0:
-            print("{} pid {}".format(_p.name, _p.pid))
+            log.info("{} pid {}".format(_p.name, _p.pid))
 
     _fps_ = FPS()
     rotate = None
@@ -1331,12 +1382,11 @@ def start_face_detect_procs(detector, predictor):
                     framenum, frame, shapes = shapesqs[qnum].get(timeout=timeout)
                 except queue.Empty:
                     if _args_.verbose > 0 and framerate - _fps_.fps() > 2:
-                        print("queue delay, fps[{:.02f}]...low voltage?".format(_fps_.fps()),
-                              flush=True)
+                        log.info("queue delay, fps[{:.02f}]...low voltage?".format(_fps_.fps()))
                     continue
             if framenum != nextframe:
                 if framenum < 0 and _args_.verbose >= abs(framenum):
-                    print(frame, flush=True)
+                    log.info(frame)
                 else:
                     ooobuf[framenum] = (framenum, frame, shapes)
                 continue
@@ -1345,7 +1395,7 @@ def start_face_detect_procs(detector, predictor):
             if shapes is None and not mouse.paused:
                 no_face_frames += 1
                 if _args_.verbose > 0:
-                    print(no_face_frames, 'no face', end='\r', flush=True)
+                    log.debug('{} no face'.format(no_face_frames))
 
             if firstframe:
                 firstframe = False
@@ -1387,11 +1437,8 @@ def start_face_detect_procs(detector, predictor):
             traceback.print_exc()
         restart = True
 
-    if _args_.verbose > 0 and no_face_frames:
-        print('')
-
     if _args_.verbose > 0:
-        print("Shutting down ...", flush=True)
+        log.info("Shutting down ...")
 
     if writer is not None:
         writer.release()
@@ -1408,15 +1455,15 @@ def start_face_detect_procs(detector, predictor):
         frameq.put('STOP')
     for p in workers:
         if _args_.verbose > 0:
-            print("Joining {}...".format(p.name), end="", flush=True)
+            log.info("Joining {}...".format(p.name), end="")
         p.join()
         if _args_.verbose > 0:
-            print("stopped.", flush=True)
+            log.info("stopped.", popend=True)
 
     if _args_.verbose > 0:
-        print("Elapsed time: {:.1f}s".format(_fps_.elapsed()))
-        print("         FPS: {:.3f}/{}".format(_fps_.fps(), cfps))
-        print("     No face: {}".format(no_face_frames))
+        log.info("Elapsed time: {:.1f}s".format(_fps_.elapsed()))
+        log.info("         FPS: {:.3f}/{}".format(_fps_.fps(), cfps))
+        log.info("     No face: {}".format(no_face_frames))
 
 
 def start_face_detect_thread(detector, predictor):
@@ -1449,9 +1496,9 @@ def start_face_detect_thread(detector, predictor):
     t.join()
 
     if _args_.verbose > 0 and not _args_.onraspi:
-        print("Demo Queue")
-        print("Elapsed time: {:.1f}s".format(fps.elapsed()))
-        print("         FPS: {:.3f}".format(fps.fps()))
+        log.info("Demo Queue")
+        log.info("Elapsed time: {:.1f}s".format(fps.elapsed()))
+        log.info("         FPS: {:.3f}".format(fps.fps()))
 
 
 def main():
@@ -1461,8 +1508,14 @@ def main():
 
     _args_ = parse_arguments()
 
+    if _args_.verbose > 2:
+        _args_.verbose = 2
+
+    level = -_args_.verbose * logging.DEBUG + logging.WARNING
+    log.setLevel(level)
+
     if _args_.verbose > 0:
-        print("Starting {}".format(' '.join(sys.argv)), flush=True)
+        log.info("Starting {}".format(' '.join(sys.argv)))
 
     if _args_.debug and _args_.verbose < 2:
         _args_.verbose = 2
@@ -1479,22 +1532,23 @@ def main():
 
     if _args_.verbose > 0:
         if _args_.procs > 0:
-            print("Multiproc[{} workers]".format(_args_.procs))
+            log.info("Multiproc[{} workers]".format(_args_.procs))
         else:
-            print("Threaded QMode[{}]".format(_args_.qmode))
+            log.info("Threaded QMode[{}]".format(_args_.qmode))
         if _args_.filter:
-            print("Kalman filter[enabled]")
+            log.info("Kalman filter[enabled]")
         else:
-            print("Smoothness[{}]".format(_args_.smoothness))
-        print("Xgain[{:.2f}] Ygain[{:.2f}]".format(_args_.xgain, _args_.ygain))
-        print("loading detector, predictor: ", end="", flush=True)
+            log.info("Smoothness[{}]".format(_args_.smoothness))
+        log.info("Xgain[{:.2f}] Ygain[{:.2f}]".format(_args_.xgain, _args_.ygain))
+        log.info("loading detector, predictor: ", end="")
+
     cwd = os.path.abspath(os.path.dirname(__file__))
     model_path = os.path.abspath(os.path.join(cwd, "shape_predictor_68_face_landmarks.dat"))
     # model_path = os.path.abspath(os.path.join(cwd, "shape_predictor_5_face_landmarks.dat"))
     detector = dlib.get_frontal_face_detector()
     predictor = dlib.shape_predictor(model_path)
     if _args_.verbose > 0:
-        print("done.", flush=True)
+        log.info("done.", popend=True)
 
     renice(-10, mp.current_process().pid)
 
@@ -1510,7 +1564,7 @@ def main():
         threads = yappi.get_thread_stats()
         threads.print_all()
         for thread in threads:
-            print(
+            log.info(
                 "Function stats for (%s) (%d)" % (thread.name, thread.id)
             )  # it is the Thread.__class__.__name__
             yappi.get_func_stats(ctx_id=thread.id).print_all()
@@ -1520,13 +1574,14 @@ def main():
 
     if restart:
         if _args_.verbose > 0:
-            print("\nAuto restarting...\n", flush=True)
+            log.info("Auto restarting...\n")
         os.execv(__file__, sys.argv)
 
     return 0
 
 
 if __name__ == '__main__':
+    log = MyLogger()
     running = True
     restart = False
     global _args_
