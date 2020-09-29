@@ -1006,6 +1006,7 @@ def draw_landmarks(frame, shapes, center):
 
 def face_detect_mp(frameq, shapesq, detector, predictor, args):
     signal.signal(signal.SIGINT, signal.SIG_IGN)
+    signal.signal(signal.SIGTERM, signal.SIG_IGN)
 
     r = None
     dim = None
@@ -1317,6 +1318,7 @@ def renice(nice, pids):
 def start_face_detect_procs(detector, predictor):
     global _fps_
     global restart
+    global running
 
     if _args_.verbose > 0:
         log.info("{} pid {}".format(mp.current_process().name, mp.current_process().pid))
@@ -1370,72 +1372,63 @@ def start_face_detect_procs(detector, predictor):
     ooobuf = {}
     nextframe = 1
     qnum = -1
-    try:
-        while True:
+    while running:
+        try:
+            framenum, frame, shapes = ooobuf[nextframe]
+        except KeyError:
             try:
-                framenum, frame, shapes = ooobuf[nextframe]
-            except KeyError:
-                try:
-                    qnum += 1
-                    if qnum >= len(shapesqs):
-                        qnum = 0
-                    framenum, frame, shapes = shapesqs[qnum].get(timeout=timeout)
-                except queue.Empty:
-                    if _args_.verbose > 0 and framerate - _fps_.fps() > 2:
-                        log.info("queue delay, fps[{:.02f}]...low voltage?".format(_fps_.fps()))
-                    continue
-            if framenum != nextframe:
-                if framenum < 0 and _args_.verbose >= abs(framenum):
-                    log.info(frame)
-                else:
-                    ooobuf[framenum] = (framenum, frame, shapes)
+                qnum += 1
+                if qnum >= len(shapesqs):
+                    qnum = 0
+                framenum, frame, shapes = shapesqs[qnum].get(timeout=timeout)
+            except queue.Empty:
+                if _args_.verbose > 0 and framerate - _fps_.fps() > 2:
+                    log.info("queue delay, fps[{:.02f}]...low voltage?".format(_fps_.fps()))
                 continue
-            nextframe += 1
+        if framenum != nextframe:
+            if framenum < 0 and _args_.verbose >= abs(framenum):
+                log.info(frame)
+            else:
+                ooobuf[framenum] = (framenum, frame, shapes)
+            continue
+        nextframe += 1
 
-            if shapes is None and not mouse.paused:
-                no_face_frames += 1
-                if _args_.verbose > 0:
-                    log.debug('{} no face'.format(no_face_frames))
+        if shapes is None and not mouse.paused:
+            no_face_frames += 1
+            if _args_.verbose > 0:
+                log.debug('{} no face'.format(no_face_frames))
 
-            if firstframe:
-                firstframe = False
-                timeout = 3 / framerate
-                if _args_.onraspi:
-                    mouse.maxwidth, mouse.maxheight = 32767, 32767
-                else:
-                    mouse.maxwidth, mouse.maxheight = cam.framew, cam.frameh
-                _fps_.start()
+        if firstframe:
+            firstframe = False
+            timeout = 3 / framerate
+            if _args_.onraspi:
+                mouse.maxwidth, mouse.maxheight = 32767, 32767
+            else:
+                mouse.maxwidth, mouse.maxheight = cam.framew, cam.frameh
+            _fps_.start()
 
-            _fps_.stop()
-            if framenum > 5 and framenum % int(2 * _fps_.fps()) == 0:
-                if getmtime(__file__) != mtime:
-                    restart = True
-                    break
+        _fps_.stop()
+        if framenum > 5 and framenum % int(2 * _fps_.fps()) == 0:
+            if getmtime(__file__) != mtime:
+                restart = True
+                break
 
-            face.update(shapes)
-            mouse.update()
+        face.update(shapes)
+        mouse.update()
 
-            if not _args_.onraspi or writer is not None:
-                annotate_frame(frame, shapes, face, mouse)
+        if not _args_.onraspi or writer is not None:
+            annotate_frame(frame, shapes, face, mouse)
 
-            if writer is not None:
-                writer.write(frame)
+        if writer is not None:
+            writer.write(frame)
 
-            if not _args_.onraspi:
-                cv2.imshow("Demo", frame)
+        if not _args_.onraspi:
+            cv2.imshow("Demo", frame)
 
-                if cv2.waitKey(1) == 27:
-                    break
+            if cv2.waitKey(1) == 27:
+                break
 
-            _fps_.update()
-
-    except KeyboardInterrupt:
-        pass
-
-    except BrokenPipeError:
-        if _args_.verbose > 0:
-            traceback.print_exc()
-        restart = True
+        _fps_.update()
 
     if _args_.verbose > 0:
         log.info("Shutting down ...")
@@ -1474,23 +1467,20 @@ def start_face_detect_thread(detector, predictor):
     t = Thread(target=face_detect, args=(demoq, detector, predictor))
     t.start()
     firstframe = True
-    try:
-        while running:
-            try:
-                frame = demoq.get(timeout=1)
-            except queue.Empty:
-                continue
-            if firstframe:
-                firstframe = False
-                fps.start()
+    while running:
+        try:
+            frame = demoq.get(timeout=1)
+        except queue.Empty:
+            continue
+        if firstframe:
+            firstframe = False
+            fps.start()
 
-            cv2.imshow("Demo", frame)
-            fps.update()
+        cv2.imshow("Demo", frame)
+        fps.update()
 
-            if cv2.waitKey(1) == 27:
-                running = False
-    except KeyboardInterrupt:
-        running = False
+        if cv2.waitKey(1) == 27:
+            running = False
 
     fps.stop()
     t.join()
@@ -1499,6 +1489,15 @@ def start_face_detect_thread(detector, predictor):
         log.info("Demo Queue")
         log.info("Elapsed time: {:.1f}s".format(fps.elapsed()))
         log.info("         FPS: {:.3f}".format(fps.fps()))
+
+
+def sig_handler(signum, frame):
+    global running
+
+    if _args_.verbose > 0:
+        log.info("Caught signal '{}'".format(signum))
+
+    running = False
 
 
 def main():
@@ -1551,6 +1550,9 @@ def main():
         log.info("done.", popend=True)
 
     renice(-10, mp.current_process().pid)
+
+    signal.signal(signal.SIGINT, sig_handler)
+    signal.signal(signal.SIGTERM, sig_handler)
 
     if _args_.procs > 0:
         start_face_detect_procs(detector, predictor)
