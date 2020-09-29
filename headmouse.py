@@ -475,7 +475,7 @@ class Eyebrows(object):
 
             if self._raised and not self._sticky_raised:
                 self._raised_count += 1
-                if self._raised_count > int(round(_fps_.fps() * .750)):
+                if self._raised_count > int(round(_fps_.fps() * .500)):
                     self._sticky_raised = True
                     self._raised_count = 0
             else:
