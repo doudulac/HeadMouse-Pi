@@ -1491,7 +1491,7 @@ def start_face_detect_thread(detector, predictor):
         log.info("         FPS: {:.3f}".format(fps.fps()))
 
 
-def sig_handler(signum, frame):
+def sig_handler(signum, _frame):
     global running
 
     if _args_.verbose > 0:
