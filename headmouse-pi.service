@@ -1,0 +1,12 @@
+[Unit]
+Description=Service for HeadMouse Pi
+After=headmousepi-gadgets.service
+
+[Service]
+ExecStart=/hmpi/headmouse.py -v -x 2.5 -y 3 -k
+StandardOutput=append:/hmpi/hm.log
+StandardError=append:/hmpi/hm.log
+User=pi
+
+[Install]
+WantedBy=multi-user.target

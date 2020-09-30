@@ -1,0 +1,10 @@
+[Unit]
+Description=Headmouse Pi USB gadgets
+
+[Service]
+Type=oneshot
+ExecStart=/hmpi/headmousepi_gadgets.sh
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
