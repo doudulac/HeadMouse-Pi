@@ -857,7 +857,7 @@ class MousePointer(object):
 
     def send_mouse_relative(self, click, dx, dy):
         if _args_.verbose > 1 and click:
-            log.info('click', click)
+            log.info('click {}'.format(click))
 
         if self._fd is not None:
             report = struct.pack('<2b2h', 2, click, dx, dy)
