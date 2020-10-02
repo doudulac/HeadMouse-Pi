@@ -928,6 +928,7 @@ class MousePointer(object):
 
 class MyLogger(object):
     def __init__(self):
+        logging.raiseExceptions = False
         self._root = logging.root
         for h in self._root.handlers:
             self._root.removeHandler(h)
@@ -959,7 +960,10 @@ class MyLogger(object):
             self._ends.append(self._hndlr.terminator)
             self._hndlr.terminator = end
 
-        self._root.log(level, msg, *args, **kwargs)
+        try:
+            self._root.log(level, msg, *args, **kwargs)
+        except BrokenPipeError:
+            pass
 
     def debug(self, msg, end=None, popend=False, *args, **kwargs):
         self.log(logging.DEBUG, msg, end, popend, *args, **kwargs)
@@ -1553,6 +1557,7 @@ def main():
 
     signal.signal(signal.SIGINT, sig_handler)
     signal.signal(signal.SIGTERM, sig_handler)
+    signal.signal(signal.SIGPIPE, sig_handler)
 
     if _args_.procs > 0:
         start_face_detect_procs(detector, predictor)
@@ -1571,8 +1576,8 @@ def main():
             )  # it is the Thread.__class__.__name__
             yappi.get_func_stats(ctx_id=thread.id).print_all()
 
-    sys.stdout.flush()
-    sys.stderr.flush()
+    # sys.stdout.flush()
+    # sys.stderr.flush()
 
     if restart:
         if _args_.verbose > 0:
