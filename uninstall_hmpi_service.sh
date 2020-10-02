@@ -5,9 +5,12 @@ DEVDIR=$SYSDIR/g1
 HMPIG=/etc/systemd/system/headmousepi-gadgets.service
 HMPI=/etc/systemd/system/headmouse-pi.service
 
+echo "Stopping headmouse-pi"
 sudo systemctl stop headmouse-pi
+echo "Stopping headmouse-gadgets"
 sudo systemctl stop headmousepi-gadgets
 
+echo "Disabling UDC"
 echo '' | sudo tee $DEVDIR/UDC
 
 echo "Removing strings from configurations"
