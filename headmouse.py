@@ -700,13 +700,13 @@ class MousePointer(object):
         self._prevdx = 0
         self._prevdy = 0
         self.i_accel = None
-        self.accel = [1.0, 1.0, 1.8, 1.9, 2.0,
-                      2.0, 2.0, 2.0, 2.1, 2.2,
-                      2.3, 2.4, 2.5, 3.0, 4.0,
-                      4.1, 4.2, 4.3, 4.4, 4.5,
-                      4.6, 4.7, 4.8, 4.9, 5.0,
-                      5.1, 5.2, 5.3, 5.4, 5.5, ]
-        # self.accel = [1.0]*10 + [2.0]*20
+        # self.accel = [0.0, 1.0, 1.2, 1.4, 1.6,
+        #               1.8, 2.0, 2.2, 2.4, 2.6,
+        #               2.3, 2.4, 2.5, 3.0, 4.0,
+        #               4.1, 4.2, 4.3, 4.4, 4.5,
+        #               4.6, 4.7, 4.8, 4.9, 5.0,
+        #               5.1, 5.2, 5.3, 5.4, 5.5, ]
+        self.accel = [1.0]*10 + [2.0]*20
 
     def open_hidg(self):
         if self._fd is not None:
@@ -1250,9 +1250,9 @@ def parse_arguments():
                         help="Use usb camera instead of PiCamera")
     parser.add_argument("-v", "--verbose", action="count", default=0,
                         help="Verbosity")
-    parser.add_argument("-x", "--xgain", default=1.0, type=float,
+    parser.add_argument("-x", "--xgain", default=3.5, type=float,
                         help="X gain")
-    parser.add_argument("-y", "--ygain", default=1.0, type=float,
+    parser.add_argument("-y", "--ygain", default=4.5, type=float,
                         help="Y gain")
     parser.add_argument("--ear", default=.15,
                         help="eye aspect ratio threshold (default: .15)")

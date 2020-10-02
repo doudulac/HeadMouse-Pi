@@ -3,7 +3,7 @@ Description=Service for HeadMouse Pi
 After=headmousepi-gadgets.service
 
 [Service]
-ExecStart=/hmpi/headmouse.py -v -x 2.5 -y 3 -k
+ExecStart=/hmpi/headmouse.py -v -x 3.5 -y 4.5 -s 3 -k
 StandardOutput=append:/hmpi/hm.log
 StandardError=append:/hmpi/hm.log
 User=pi
