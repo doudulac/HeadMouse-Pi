@@ -5,25 +5,25 @@ import logging
 import math
 import multiprocessing as mp
 import os
-from os.path import getmtime
 import queue
 import shlex
 import signal
 import struct
 import subprocess
 import sys
-from threading import Thread
 import traceback
+from os.path import getmtime
+from threading import Thread
 
 import cv2
 import dlib
+import numpy as np
 import yappi
+from filterpy.common.discretization import Q_discrete_white_noise
+from filterpy.kalman import KalmanFilter
 from imutils import face_utils
 from imutils.video import FPS
-from filterpy.kalman import KalmanFilter
-from filterpy.common.discretization import Q_discrete_white_noise
 from scipy.linalg import block_diag
-import numpy as np
 
 
 class MyVideoStream:
