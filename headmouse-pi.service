@@ -3,11 +3,15 @@ Description=Service for HeadMouse Pi
 After=headmousepi-gadgets.service
 
 [Service]
+Type=notify
 ExecStart=/hmpi/headmouse.py -v -k
 StandardOutput=append:/hmpi/hm.log
-StandardError=append:/hmpi/hm.log
 User=pi
 Group=pi
+WatchdogSec=2
+TimeoutStartSec=20
+TimeoutStopSec=1
+Restart=on-failure
 
 [Install]
 WantedBy=multi-user.target

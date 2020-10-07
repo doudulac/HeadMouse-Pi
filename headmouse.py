@@ -1132,6 +1132,12 @@ def face_detect(demoq, detector, predictor):
     if _args_.debug:
         mouse.close_hidg()
 
+    wd = int(int(os.getenv('WATCHDOG_USEC', 0)) / 1000000)
+    if wd > 0:
+        from systemd import daemon
+        log.info("watchdog: {}".format(wd))
+        daemon.notify("READY=1\nWATCHDOG=1")
+
     no_face_frames = 0
     r = None
     dim = None
@@ -1173,11 +1179,18 @@ def face_detect(demoq, detector, predictor):
         shapes = face_utils.shape_to_np(shapes)
 
         _fps_.stop()
-        if framenum > 5 and framenum % int(2 * _fps_.fps()) == 0:
-            if getmtime(__file__) != mtime:
-                restart = True
-                running = False
-                break
+        try:
+            if wd > 0 and framenum % int(wd / 4 * _fps_.fps()) == 0:
+                daemon.notify("WATCHDOG=1")
+                log.debug('{}: wd({})'.format(framenum, wd))
+
+            if framenum > 5 and framenum % int(2 * _fps_.fps()) == 0:
+                if getmtime(__file__) != mtime:
+                    restart = True
+                    running = False
+                    break
+        except ZeroDivisionError:
+            _fps_.start()
 
         face.update(shapes)
         try:
@@ -1199,6 +1212,10 @@ def face_detect(demoq, detector, predictor):
             demoq.put_nowait(frame)
 
         _fps_.update()
+
+    if wd > 0:
+        msg = "RELOADING=1" if restart else "STOPPING=1"
+        daemon.notify(msg)
 
     if _args_.verbose > 0:
         log.info("Shutting down ...")
@@ -1410,6 +1427,12 @@ def start_face_detect_procs(detector, predictor):
     if _args_.debug:
         mouse.close_hidg()
 
+    wd = int(int(os.getenv('WATCHDOG_USEC', 0)) / 1000000)
+    if wd > 0:
+        from systemd import daemon
+        log.info("watchdog: {}".format(wd))
+        daemon.notify("READY=1\nWATCHDOG=1")
+
     no_face_frames = 0
     firstframe = True
     timeout = None
@@ -1452,11 +1475,18 @@ def start_face_detect_procs(detector, predictor):
                 mouse.maxwidth, mouse.maxheight = cam.framew, cam.frameh
             _fps_.start()
 
-        _fps_.stop()
-        if framenum > 5 and framenum % int(2 * _fps_.fps()) == 0:
-            if getmtime(__file__) != mtime:
-                restart = True
-                break
+            _fps_.stop()
+            try:
+                if wd > 0 and framenum % int(wd / 4 * _fps_.fps()) == 0:
+                    daemon.notify("WATCHDOG=1")
+                    log.debug('{}: wd({})'.format(framenum, wd))
+
+            if framenum > 5 and framenum % int(2 * _fps_.fps()) == 0:
+                if getmtime(__file__) != mtime:
+                    restart = True
+                    break
+        except ZeroDivisionError:
+            _fps_.start()
 
         face.update(shapes)
         mouse.update()
@@ -1474,6 +1504,10 @@ def start_face_detect_procs(detector, predictor):
                 break
 
         _fps_.update()
+
+    if wd > 0:
+        msg = "RELOADING=1" if restart else "STOPPING=1"
+        daemon.notify(msg)
 
     if _args_.verbose > 0:
         log.info("Shutting down ...")
