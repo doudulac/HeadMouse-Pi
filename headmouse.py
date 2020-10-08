@@ -148,40 +148,48 @@ class MyPiVideoStream:
         return self
 
     def update(self):
+        global running
+
         # keep looping infinitely until the thread is stopped
         framenum = 0
-        for f in self.stream:
-            # grab the frame from the stream and clear the stream in
-            # preparation for the next frame
-            frame = f.array
-            if self.framew is None and frame is not None:
-                (self.frameh, self.framew) = frame.shape[:2]
-            framenum += 1
-            if self.frame_q is not None:
-                try:
-                    self.frame_q.put_nowait((framenum, frame))
-                except queue.Full:
-                    framenum -= 1
-                    self.skipped += 1
-            else:
-                self.frame = frame
-                self.framenum = framenum
-            self.rawCapture.truncate(0)
-
-            # if the thread indicator variable is set, stop the thread
-            # and resource camera resources
-            if self.stopped:
-                self.stream.close()
-                self.rawCapture.close()
-                self.camera.close()
-                if _args_.verbose > 0:
-                    log.info("Frames captured: {}".format(framenum))
+        try:
+            for f in self.stream:
+                # grab the frame from the stream and clear the stream in
+                # preparation for the next frame
+                frame = f.array
+                if self.framew is None and frame is not None:
+                    (self.frameh, self.framew) = frame.shape[:2]
+                framenum += 1
+                if self.frame_q is not None:
                     try:
-                        log.info("Frames orphaned: {}".format(self.frame_q.qsize()))
-                    except (NotImplementedError, AttributeError):
-                        pass
-                    log.info("Frames skipped: {}".format(self.skipped))
-                return
+                        self.frame_q.put_nowait((framenum, frame))
+                    except queue.Full:
+                        framenum -= 1
+                        self.skipped += 1
+                else:
+                    self.frame = frame
+                    self.framenum = framenum
+                self.rawCapture.truncate(0)
+
+                # if the thread indicator variable is set, stop the thread
+                # and resource camera resources
+                if self.stopped:
+                    break
+        except Exception:
+            log.info(traceback.format_exc())
+            running = False
+            self.stopped = True
+
+        self.stream.close()
+        self.rawCapture.close()
+        self.camera.close()
+        if _args_.verbose > 0:
+            log.info("Frames captured: {}".format(framenum))
+            try:
+                log.info("Frames orphaned: {}".format(self.frame_q.qsize()))
+            except (NotImplementedError, AttributeError):
+                pass
+            log.info("Frames skipped: {}".format(self.skipped))
 
     def read(self):
         # return the frame most recently read
@@ -1440,40 +1448,41 @@ def start_face_detect_procs(detector, predictor):
     ooobuf = {}
     nextframe = 1
     qnum = -1
-    while running:
-        try:
-            framenum, frame, shapes = ooobuf[nextframe]
-        except KeyError:
+    try:
+        while running:
             try:
-                qnum += 1
-                if qnum >= len(shapesqs):
-                    qnum = 0
-                framenum, frame, shapes = shapesqs[qnum].get(timeout=timeout)
-            except queue.Empty:
-                if _args_.verbose > 0 and framerate - _fps_.fps() > 2:
-                    log.info("queue delay, fps[{:.02f}]...low voltage?".format(_fps_.fps()))
+                framenum, frame, shapes = ooobuf[nextframe]
+            except KeyError:
+                try:
+                    qnum += 1
+                    if qnum >= len(shapesqs):
+                        qnum = 0
+                    framenum, frame, shapes = shapesqs[qnum].get(timeout=timeout)
+                except queue.Empty:
+                    if _args_.verbose > 0 and framerate - _fps_.fps() > 2:
+                        log.info("queue delay, fps[{:.02f}]...low voltage?".format(_fps_.fps()))
+                    continue
+            if framenum != nextframe:
+                if framenum < 0 and _args_.verbose >= abs(framenum):
+                    log.info(frame)
+                else:
+                    ooobuf[framenum] = (framenum, frame, shapes)
                 continue
-        if framenum != nextframe:
-            if framenum < 0 and _args_.verbose >= abs(framenum):
-                log.info(frame)
-            else:
-                ooobuf[framenum] = (framenum, frame, shapes)
-            continue
-        nextframe += 1
+            nextframe += 1
 
-        if shapes is None and not mouse.paused:
-            no_face_frames += 1
-            if _args_.verbose > 0:
-                log.debug('{} no face'.format(no_face_frames))
+            if shapes is None and not mouse.paused:
+                no_face_frames += 1
+                if _args_.verbose > 0:
+                    log.debug('{} no face'.format(no_face_frames))
 
-        if firstframe:
-            firstframe = False
-            timeout = 3 / framerate
-            if _args_.onraspi:
-                mouse.maxwidth, mouse.maxheight = 32767, 32767
-            else:
-                mouse.maxwidth, mouse.maxheight = cam.framew, cam.frameh
-            _fps_.start()
+            if firstframe:
+                firstframe = False
+                timeout = 3 / framerate
+                if _args_.onraspi:
+                    mouse.maxwidth, mouse.maxheight = 32767, 32767
+                else:
+                    mouse.maxwidth, mouse.maxheight = cam.framew, cam.frameh
+                _fps_.start()
 
             _fps_.stop()
             try:
@@ -1481,29 +1490,31 @@ def start_face_detect_procs(detector, predictor):
                     daemon.notify("WATCHDOG=1")
                     log.debug('{}: wd({})'.format(framenum, wd))
 
-            if framenum > 5 and framenum % int(2 * _fps_.fps()) == 0:
-                if getmtime(__file__) != mtime:
-                    restart = True
+                if framenum > 5 and framenum % int(2 * _fps_.fps()) == 0:
+                    if getmtime(__file__) != mtime:
+                        restart = True
+                        break
+            except ZeroDivisionError:
+                _fps_.start()
+
+            face.update(shapes)
+            mouse.update()
+
+            if not _args_.onraspi or writer is not None:
+                annotate_frame(frame, shapes, face, mouse)
+
+            if writer is not None:
+                writer.write(frame)
+
+            if not _args_.onraspi:
+                cv2.imshow("Demo", frame)
+
+                if cv2.waitKey(1) == 27:
                     break
-        except ZeroDivisionError:
-            _fps_.start()
 
-        face.update(shapes)
-        mouse.update()
-
-        if not _args_.onraspi or writer is not None:
-            annotate_frame(frame, shapes, face, mouse)
-
-        if writer is not None:
-            writer.write(frame)
-
-        if not _args_.onraspi:
-            cv2.imshow("Demo", frame)
-
-            if cv2.waitKey(1) == 27:
-                break
-
-        _fps_.update()
+            _fps_.update()
+    except Exception:
+        log.info(traceback.format_exc())
 
     if wd > 0:
         msg = "RELOADING=1" if restart else "STOPPING=1"
@@ -1630,15 +1641,19 @@ def main():
 
     renice(-10, mp.current_process().pid)
 
-    signal.signal(signal.SIGINT, sig_handler)
-    signal.signal(signal.SIGTERM, sig_handler)
-    signal.signal(signal.SIGPIPE, sig_handler)
-
-    if _args_.procs > 0:
-        start_face_detect_procs(detector, predictor)
-    else:
-        start_face_detect_thread(detector, predictor)
-
+    origsig = [signal.signal(signal.SIGINT, sig_handler),
+               signal.signal(signal.SIGTERM, sig_handler),
+               signal.signal(signal.SIGPIPE, sig_handler), ]
+    try:
+        if _args_.procs > 0:
+            start_face_detect_procs(detector, predictor)
+        else:
+            start_face_detect_thread(detector, predictor)
+    except Exception:
+        signal.signal(signal.SIGINT, origsig[0])
+        signal.signal(signal.SIGTERM, origsig[1])
+        signal.signal(signal.SIGPIPE, origsig[2])
+        raise
     if _args_.profile:
         yappi.stop()
 
