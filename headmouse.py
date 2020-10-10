@@ -1142,7 +1142,7 @@ def face_detect(demoq, detector, predictor):
 
     wd = int(int(os.getenv('WATCHDOG_USEC', 0)) / 1000000)
     if wd > 0:
-        from systemd import daemon
+        import systemd.daemon as daemon
         log.info("watchdog: {}".format(wd))
         daemon.notify("READY=1\nWATCHDOG=1")
 
@@ -1437,7 +1437,7 @@ def start_face_detect_procs(detector, predictor):
 
     wd = int(int(os.getenv('WATCHDOG_USEC', 0)) / 1000000)
     if wd > 0:
-        from systemd import daemon
+        import systemd.daemon as daemon
         log.info("watchdog: {}".format(wd))
         daemon.notify("READY=1\nWATCHDOG=1")
 
