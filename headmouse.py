@@ -27,7 +27,6 @@ import signal
 import struct
 import subprocess
 import sys
-import traceback
 from os.path import getmtime
 from threading import Thread
 
@@ -40,6 +39,7 @@ from filterpy.kalman import KalmanFilter
 from imutils import face_utils
 from imutils.video import FPS
 from scipy.linalg import block_diag
+
 
 # MyVideoStream, MyPiVideoStream, and MyVideoCapture are derived from the 'imutils.video'
 # package authored by Adrian Rosebrock and modified by Kevin Rowland. The following license applies:
@@ -175,8 +175,8 @@ class MyPiVideoStream:
                 # and resource camera resources
                 if self.stopped:
                     break
-        except Exception:
-            log.info(traceback.format_exc())
+        except Exception as e:
+            log.info(e)
             running = False
             self.stopped = True
 
@@ -1203,9 +1203,9 @@ def face_detect(demoq, detector, predictor):
         face.update(shapes)
         try:
             mouse.update()
-        except BrokenPipeError:
+        except BrokenPipeError as e:
             if _args_.verbose > 0:
-                traceback.print_exc()
+                log.info(e)
             restart = True
             running = False
             break
@@ -1513,8 +1513,8 @@ def start_face_detect_procs(detector, predictor):
                     break
 
             _fps_.update()
-    except Exception:
-        log.info(traceback.format_exc())
+    except Exception as e:
+        log.info(e)
 
     if wd > 0:
         msg = "RELOADING=1" if restart else "STOPPING=1"
