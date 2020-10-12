@@ -37,3 +37,6 @@ ls /sys/class/udc > UDC
 
 chown root:pi /dev/hidg0
 chmod g+rw /dev/hidg0
+
+ifup usb0
+service dnsmasq restart
