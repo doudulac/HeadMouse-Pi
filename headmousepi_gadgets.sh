@@ -19,7 +19,8 @@ N="usb0"
 mkdir -p functions/ecm.$N
 mkdir -p functions/hid.$N
 
-echo "00:11:22:33:44:55" > functions/ecm.$N/dev_addr
+echo "00:12:34:56:78:9a" > functions/ecm.$N/dev_addr
+echo "00:a9:87:65:43:21" > functions/ecm.$N/host_addr
 
 echo 1 > functions/hid.$N/protocol
 echo 1 > functions/hid.$N/subclass
