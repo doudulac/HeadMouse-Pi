@@ -27,6 +27,7 @@ import signal
 import struct
 import subprocess
 import sys
+import traceback
 from os.path import getmtime
 from threading import Thread
 
@@ -176,7 +177,7 @@ class MyPiVideoStream:
                 if self.stopped:
                     break
         except Exception as e:
-            log.info(e)
+            log.info("{}\n{}".format(e, traceback.format_exc()))
             running = False
             self.stopped = True
 
@@ -1514,7 +1515,7 @@ def start_face_detect_procs(detector, predictor):
 
             _fps_.update()
     except Exception as e:
-        log.info(e)
+        log.info("{}\n{}".format(e, traceback.format_exc()))
 
     if wd > 0:
         msg = "RELOADING=1" if restart else "STOPPING=1"
