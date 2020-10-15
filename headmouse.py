@@ -1587,7 +1587,8 @@ def sig_handler(signum, _frame):
     if _args_.verbose > 0:
         log.info("Caught signal '{}'".format(signum))
 
-    running = False
+    if signum != signal.SIGPIPE:
+        running = False
 
 
 def main():
