@@ -1025,17 +1025,20 @@ class MyLogger(object):
 def annotate_frame(frame, shapes, face, mouse):
     nose = face.nose
     brows = face.brows
+    red = (0, 0, 255)
+
+    cv2.putText(frame, "FPS: {:.2f}".format(_fps_.fps()), (90, 130),
+                cv2.FONT_HERSHEY_DUPLEX, 0.9, red, 1)
+    cv2.putText(frame, "brows: {:.2f} {}".format(brows.cur_height, brows.raised), (90, 165),
+                cv2.FONT_HERSHEY_DUPLEX, 0.9, red, 1)
+    cv2.putText(frame, "nose: " + str(nose.position), (90, 200),
+                cv2.FONT_HERSHEY_DUPLEX, 0.9, red, 1)
+    cv2.putText(frame, "dxdy: " + str((mouse.dx, mouse.dy)), (90, 235),
+                cv2.FONT_HERSHEY_DUPLEX, 0.9, red, 1)
     if mouse.cpos is not None:
         cv2.circle(frame, (int(mouse.cpos[0]), int(mouse.cpos[1])), 4, (0, 0, 255), -1)
         cv2.putText(frame, "ptr : " + str((int(mouse.cpos[0]), int(mouse.cpos[1]))), (90, 270),
-                    cv2.FONT_HERSHEY_DUPLEX, 0.9, (147, 58, 31), 1)
-
-    cv2.putText(frame, "brows: {:.2f} {}".format(brows.cur_height, brows.raised), (90, 165),
-                cv2.FONT_HERSHEY_DUPLEX, 0.9, (147, 58, 31), 1)
-    cv2.putText(frame, "nose: " + str(nose.position), (90, 200),
-                cv2.FONT_HERSHEY_DUPLEX, 0.9, (147, 58, 31), 1)
-    cv2.putText(frame, "dxdy: " + str((mouse.dx, mouse.dy)), (90, 235),
-                cv2.FONT_HERSHEY_DUPLEX, 0.9, (147, 58, 31), 1)
+                    cv2.FONT_HERSHEY_DUPLEX, 0.9, red, 1)
 
     draw_landmarks(frame, shapes, face.center)
     # frame = face_utils.visualize_facial_landmarks(frame, shapes, [(0,255,0),]*8)
