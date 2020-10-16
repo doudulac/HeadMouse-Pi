@@ -7,3 +7,4 @@ filterpy
 scipy
 systemd-python
 picamera
+flask

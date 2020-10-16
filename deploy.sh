@@ -7,7 +7,7 @@ if [ x"$1" = "x" ]; then
   exit 1
 fi
 
-FILES="$DIR/head* $DIR/inst* $DIR/unins* $DIR/require* $DIR/shape*"
+FILES="$DIR/head* $DIR/inst* $DIR/unins* $DIR/require* $DIR/shape* $DIR/templates"
 
 ssh "$1" "[ ! -d /hmpi ] && sudo mkdir /hmpi && sudo chown pi:pi /hmpi"
 

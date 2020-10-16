@@ -24,9 +24,11 @@ import os
 import queue
 import shlex
 import signal
+import stat
 import struct
 import subprocess
 import sys
+import time
 import traceback
 from os.path import getmtime
 from threading import Thread
@@ -37,6 +39,7 @@ import numpy as np
 import yappi
 from filterpy.common.discretization import Q_discrete_white_noise
 from filterpy.kalman import KalmanFilter
+from flask import Flask, render_template, Response
 from imutils import face_utils
 from imutils.video import FPS
 from scipy.linalg import block_diag
@@ -1022,6 +1025,54 @@ class MyLogger(object):
         self.log(logging.INFO, msg, *args, **kwargs)
 
 
+class WebServer(object):
+    def __init__(self, *args, **kwargs):
+        self.args = args
+        self.kwargs = kwargs
+        self.thread = None
+        self.queue = queue.Queue()
+        self.last_access = 0
+        self.app = Flask(__name__)
+        self.app.add_url_rule('/', 'index', self.index)
+        self.app.add_url_rule('/video_feed', 'video_feed', self.video_feed)
+
+    def start(self):
+        self.thread = Thread(target=self.app.run, args=self.args, kwargs=self.kwargs)
+        self.thread.daemon = True
+        self.thread.start()
+        return self
+
+    def put_image(self, frame):
+        now = time.time()
+        if self.has_client(now):
+            self.queue.put_nowait((frame, now))
+
+    def get_image(self):
+        while True:
+            self.last_access = time.time()
+            frame, ts = self.queue.get()
+            if frame is None or self.last_access - ts > 1:
+                # drain the queue of stale images
+                continue
+            img = cv2.imencode('.jpg', frame)[1].tobytes()
+            yield (b'--frame\r\n'
+                   b'Content-Type: image/jpeg\r\n\r\n' + img + b'\r\n')
+
+    def has_client(self, now=None):
+        if now is None:
+            now = time.time()
+        return now - self.last_access < 5
+
+    # @app.route('/')
+    @staticmethod
+    def index():
+        return render_template('index.html')
+
+    # @app.route('/video_feed')
+    def video_feed(self):
+        return Response(self.get_image(), mimetype='multipart/x-mixed-replace; boundary=frame')
+
+
 def annotate_frame(frame, shapes, face, mouse):
     nose = face.nose
     brows = face.brows
@@ -1061,14 +1112,43 @@ def draw_landmarks(frame, shapes, center):
             # cv2.line(frame, center, p2, (0, 255, 255))
 
 
-def face_detect_mp(frameq, shapesq, detector, predictor, args):
+def face_detect_mp(frameq, shapesq, cmdq, detector, predictor, args):
     signal.signal(signal.SIGINT, signal.SIG_IGN)
     signal.signal(signal.SIGTERM, signal.SIG_IGN)
 
     r = None
     dim = None
     firstframe = True
-    for framenum, frame in iter(frameq.get, "STOP"):
+    if not args.onraspi or args.debug_video:
+        def_sendframe = True
+    else:
+        def_sendframe = False
+    sendframe = def_sendframe
+
+    while True:
+        try:
+            cmd = cmdq.get_nowait()
+            if cmd == 'STOP':
+                break
+            elif cmd == 'sendframe':
+                sendframe = True
+            elif cmd == 'no_sendframe':
+                sendframe = False
+            elif cmd == 'def_sendframe':
+                sendframe = def_sendframe
+            else:
+                cmd += ' <UNKNOWN>'
+            if args.verbose > 0:
+                msg = "cmd rcv: {}".format(cmd)
+                shapesq.put_nowait((-1, msg, mp.current_process().name))
+        except queue.Empty:
+            pass
+
+        try:
+            framenum, frame = frameq.get(timeout=.5)
+        except queue.Empty:
+            continue
+
         if frame is None:
             shapesq.put_nowait((framenum, None, None))
             continue
@@ -1096,7 +1176,7 @@ def face_detect_mp(frameq, shapesq, detector, predictor, args):
                                        int(faces[0].bottom() / r))
             shapes = predictor(gframe, face_rect)
             shapes = face_utils.shape_to_np(shapes)
-        if args.onraspi and not _args_.debug_video:
+        if not sendframe:
             frame = None
         shapesq.put_nowait((framenum, frame, shapes))
 
@@ -1110,6 +1190,8 @@ def face_detect(demoq, detector, predictor):
     global restart
     global _args_
     global _fps_
+
+    ws = WebServer(host='0.0.0.0', port=8000, debug=True, threaded=True, use_reloader=False).start()
 
     _fps_ = FPS()
     rotate = None
@@ -1214,8 +1296,10 @@ def face_detect(demoq, detector, predictor):
             running = False
             break
 
-        if not _args_.onraspi or writer is not None:
+        if not _args_.onraspi or writer is not None or ws.has_client():
             annotate_frame(frame, shapes, face, mouse)
+
+        ws.put_image(frame)
 
         if writer is not None:
             writer.write(frame)
@@ -1315,7 +1399,7 @@ def parse_arguments():
                         help="enable profiling")
     parser.add_argument("-q", "--qmode", action="store_true",
                         help="enable queue mode")
-    parser.add_argument("-r", "--procs", default=5, type=int,
+    parser.add_argument("-r", "--procs", default=6, type=int,
                         help="number of procs")
     parser.add_argument("-s", "--smoothness", default=3, type=int, choices=range(1, 9),
                         help="smoothness 1-8")
@@ -1393,16 +1477,18 @@ def start_face_detect_procs(detector, predictor):
     global restart
     global running
 
+    ws = WebServer(host='0.0.0.0', port=8000, debug=True, threaded=True, use_reloader=False).start()
+
     if _args_.verbose > 0:
         log.info("{} pid {}".format(mp.current_process().name, mp.current_process().pid))
     frameq = mp.Queue(5)
-    shapesqs = [mp.Queue()] * _args_.procs
+    shapesq = mp.Queue()
     workers = []
     for i in range(_args_.procs):
-        _p = mp.Process(target=face_detect_mp, args=(frameq, shapesqs[i], detector, predictor,
-                                                     _args_))
+        cmdq = mp.Queue()
+        _p = mp.Process(target=face_detect_mp, args=(frameq, shapesq, cmdq, detector, predictor, _args_))
         _p.start()
-        workers.append(_p)
+        workers.append({'proc': _p, 'cmdq': cmdq})
         if _args_.verbose > 0:
             log.info("{} pid {}".format(_p.name, _p.pid))
 
@@ -1444,32 +1530,39 @@ def start_face_detect_procs(detector, predictor):
 
     no_face_frames = 0
     firstframe = True
-    timeout = None
     mtime = getmtime(__file__)
     ooobuf = {}
     nextframe = 1
-    qnum = -1
+    webclient = False
     try:
         while running:
             try:
                 framenum, frame, shapes = ooobuf[nextframe]
             except KeyError:
                 try:
-                    qnum += 1
-                    if qnum >= len(shapesqs):
-                        qnum = 0
-                    framenum, frame, shapes = shapesqs[qnum].get(timeout=timeout)
+                    framenum, frame, shapes = shapesq.get(timeout=.01)
+                    if framenum != nextframe:
+                        if framenum < 0 and _args_.verbose >= abs(framenum):
+                            msg = frame
+                            proc = shapes
+                            log.info("({}){}".format(proc, msg))
+                        else:
+                            ooobuf[framenum] = (framenum, frame, shapes)
+                        continue
                 except queue.Empty:
-                    if _args_.verbose > 0 and framerate - _fps_.fps() > 2:
-                        log.info("queue delay, fps[{:.02f}]...low voltage?".format(_fps_.fps()))
                     continue
-            if framenum != nextframe:
-                if framenum < 0 and _args_.verbose >= abs(framenum):
-                    log.info(frame)
-                else:
-                    ooobuf[framenum] = (framenum, frame, shapes)
-                continue
+
             nextframe += 1
+
+            if ws.has_client():
+                if not webclient:
+                    webclient = True
+                    for w in workers:
+                        w['cmdq'].put_nowait('sendframe')
+            elif webclient:
+                webclient = False
+                for w in workers:
+                    w['cmdq'].put_nowait('def_sendframe')
 
             if shapes is None and not mouse.paused:
                 no_face_frames += 1
@@ -1478,7 +1571,6 @@ def start_face_detect_procs(detector, predictor):
 
             if firstframe:
                 firstframe = False
-                timeout = 3 / framerate
                 if _args_.onraspi:
                     mouse.maxwidth, mouse.maxheight = 32767, 32767
                 else:
@@ -1503,11 +1595,13 @@ def start_face_detect_procs(detector, predictor):
             face.update(shapes)
             mouse.update()
 
-            if not _args_.onraspi or writer is not None:
+            if not _args_.onraspi or writer is not None or ws.has_client():
                 annotate_frame(frame, shapes, face, mouse)
 
             if writer is not None:
                 writer.write(frame)
+
+            ws.put_image(frame)
 
             if not _args_.onraspi:
                 cv2.imshow("Demo", frame)
@@ -1537,12 +1631,11 @@ def start_face_detect_procs(detector, predictor):
     cam.stop()
     cam.join()
 
-    for i in range(_args_.procs):
-        frameq.put('STOP')
-    for p in workers:
+    for w in workers:
+        w['cmdq'].put_nowait('STOP')
         if _args_.verbose > 0:
-            log.info("Joining {}...".format(p.name), end="")
-        p.join()
+            log.info("Joining {}...".format(w['proc'].name), end="")
+        w['proc'].join()
         if _args_.verbose > 0:
             log.info("stopped.", popend=True)
 
@@ -1590,7 +1683,7 @@ def sig_handler(signum, _frame):
     if _args_.verbose > 0:
         log.info("Caught signal '{}'".format(signum))
 
-    if signum != signal.SIGPIPE:
+    if signum != signal.SIGPIPE or stat.S_ISFIFO(os.fstat(1)[stat.ST_MODE]):
         running = False
 
 
