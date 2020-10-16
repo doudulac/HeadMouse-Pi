@@ -1195,6 +1195,8 @@ def face_detect(demoq, detector, predictor):
 
             if framenum > 5 and framenum % int(2 * _fps_.fps()) == 0:
                 if getmtime(__file__) != mtime:
+                    if _args_.verbose > 0:
+                        log.info("update detected...restart")
                     restart = True
                     running = False
                     break
@@ -1493,6 +1495,8 @@ def start_face_detect_procs(detector, predictor):
 
                 if framenum > 5 and framenum % int(2 * _fps_.fps()) == 0:
                     if getmtime(__file__) != mtime:
+                        if _args_.verbose > 0:
+                            log.info("update detected...restart")
                         restart = True
                         break
             except ZeroDivisionError:
