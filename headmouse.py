@@ -39,10 +39,12 @@ import numpy as np
 import yappi
 from filterpy.common.discretization import Q_discrete_white_noise
 from filterpy.kalman import KalmanFilter
-from flask import Flask, render_template, Response
+from flask import Response
 from imutils import face_utils
 from imutils.video import FPS
 from scipy.linalg import block_diag
+
+from webapp import create_app
 
 
 # MyVideoStream, MyPiVideoStream, and MyVideoCapture are derived from the 'imutils.video'
@@ -317,9 +319,9 @@ class Face(object):
         self._shapes = None
 
         self.mouth = MouthOpen(face=self)
-        self.eyes = Eyes(face=self, ear_threshold=_args_.ear, fps=fps)
-        self.brows = Eyebrows(face=self, threshold=_args_.ebd, sticky=_args_.stickyclick)
-        self.nose = Nose(face=self, use_kalman=_args_.filter, fps=fps)
+        self.eyes = Eyes(face=self, fps=fps)
+        self.brows = Eyebrows(face=self)
+        self.nose = Nose(face=self, fps=fps)
 
     def update(self, shapes):
         self._shapes = shapes
@@ -466,16 +468,13 @@ class MouthOpen(object):
 
 
 class Eyebrows(object):
-    def __init__(self, face, threshold, sticky=False):
+    def __init__(self, face):
         self.face = face
-        self.threshold = threshold
-
         self._ebds = None
         self._cur_height = None
         self._ave_height = None
         self._raised = False
         self._raised_count = 0
-        self.sticky = sticky
         self._sticky_raised = False
 
     def update(self):
@@ -513,13 +512,13 @@ class Eyebrows(object):
         self._ave_height = sum(self._ebds[:_s]) / len(self._ebds[:_s])
 
         d_angle = self.face.y_angle - self.face.y_ave_angle
-        if self.sticky:
-            raised = self._cur_height - self._ave_height > self.threshold and d_angle < 2.0
+        if _args_.stickyclick:
+            raised = self._cur_height - self._ave_height > _args_.ebd and d_angle < 2.0
             if not self._raised:
                 self._raised = raised
             else:
                 d_angle = self.face.y_ave_angle - self.face.y_angle
-                lowered = self._ave_height - self._cur_height > self.threshold * .60 and \
+                lowered = self._ave_height - self._cur_height > _args_.ebd * .60 and \
                     d_angle < 2.0
                 if not self._sticky_raised or self._raised_count > 0:
                     self._raised = not lowered
@@ -535,7 +534,7 @@ class Eyebrows(object):
                 self._raised_count = 0
 
         else:
-            self._raised = self._cur_height - self._ave_height > self.threshold and d_angle < 2.0
+            self._raised = self._cur_height - self._ave_height > _args_.ebd and d_angle < 2.0
 
         if _args_.debug_brows:
             line = "brows {:.02f} {:.02f} {:.02f} {:.02f} {:.02f}"
@@ -566,12 +565,9 @@ class Eyebrows(object):
 
 
 class Eyes(object):
-    def __init__(self, face, ear_threshold=None, fps=None):
+    def __init__(self, face, fps=None):
         self.face = face
         self._open = False
-        if ear_threshold is None:
-            ear_threshold = .15
-        self._ear_threshold = ear_threshold
         if fps is None:
             fps = 20
         dt = 1.0 / fps
@@ -598,7 +594,7 @@ class Eyes(object):
 
         self._kf.predict()
         self._kf.update(ear)
-        if self._kf.x[0][0] < self._ear_threshold:
+        if self._kf.x[0][0] < _args_.ear:
             self._open = False
         else:
             self._open = True
@@ -624,7 +620,7 @@ class Eyes(object):
 
 
 class Nose(object):
-    def __init__(self, face, use_kalman=False, fps=None):
+    def __init__(self, face, fps=None):
         self.face = face
         self._positions = None
         self.nose_raw = [0, 0]
@@ -633,13 +629,10 @@ class Nose(object):
         self._vels = None
         self._ax = None
         self._ay = None
-        if use_kalman:
-            if fps is None:
-                fps = 20
-            dt = 1.0 / fps
-            self._kf = kalmanfilter_dim4_init(dt=dt, Q=10 ** 2, R=.05)
-        else:
-            self._kf = None
+        if fps is None:
+            fps = 20
+        dt = 1.0 / fps
+        self._kf = kalmanfilter_dim4_init(dt=dt, Q=10 ** 2, R=.05)
 
     def update(self):
         # jaw 0,16
@@ -659,7 +652,7 @@ class Nose(object):
             # Let self.nose_raw from last time persist, making dx = 0 if no filter
             kfu = None
 
-        if self._kf is None:
+        if not _args_.filter:
             nose = self.nose_raw
             vel = [0, 0]
         else:
@@ -720,10 +713,6 @@ class Nose(object):
     def vel(self):
         return self._vels[1]
 
-    @property
-    def using_kfilter(self):
-        return self._kf is not None
-
 
 class MousePointer(object):
     def __init__(self, face, mindeltathresh=None):
@@ -780,7 +769,7 @@ class MousePointer(object):
         dy = nose.dy
         dx *= self.xgain
         dy *= self.ygain
-        if not nose.using_kfilter:
+        if not _args_.filter:
             dx = dx * (1.0 - self._motionweight) + self._prevdx * self._motionweight
             dy = dy * (1.0 - self._motionweight) + self._prevdy * self._motionweight
             self._prevdx = dx
@@ -791,7 +780,7 @@ class MousePointer(object):
         if self.i_accel >= len(self.accel):
             self.i_accel = len(self.accel) - 1
 
-        if not nose.using_kfilter:
+        if not _args_.filter:
             if -self.mindeltathresh < dx < self.mindeltathresh:
                 dx = 0
             if -self.mindeltathresh < dy < self.mindeltathresh:
@@ -1025,6 +1014,13 @@ class MyLogger(object):
         self.log(logging.INFO, msg, *args, **kwargs)
 
 
+class WebAppConfig(object):
+    basedir = os.path.abspath(os.path.dirname(__file__))
+    DEBUG = True
+    ENV = 'development'
+    SECRET_KEY = 'H34dM0u53@S#perS3crEt=007'
+
+
 class WebServer(object):
     def __init__(self, *args, **kwargs):
         self.args = args
@@ -1032,8 +1028,7 @@ class WebServer(object):
         self.thread = None
         self.queue = queue.Queue()
         self.last_access = 0
-        self.app = Flask(__name__)
-        self.app.add_url_rule('/', 'index', self.index)
+        self.app = create_app(WebAppConfig())
         self.app.add_url_rule('/video_feed', 'video_feed', self.video_feed)
 
     def start(self):
@@ -1062,11 +1057,6 @@ class WebServer(object):
         if now is None:
             now = time.time()
         return now - self.last_access < 5
-
-    # @app.route('/')
-    @staticmethod
-    def index():
-        return render_template('index.html')
 
     # @app.route('/video_feed')
     def video_feed(self):
@@ -1191,7 +1181,13 @@ def face_detect(demoq, detector, predictor):
     global _args_
     global _fps_
 
+    args_help = {}
+    for action in _parser_._actions:
+        args_help[action.dest] = getattr(action, 'help', '')
+
     ws = WebServer(host='0.0.0.0', port=8000, debug=True, threaded=True, use_reloader=False).start()
+    ws.app.jinja_env.globals['args'] = _args_
+    ws.app.jinja_env.globals['args_help'] = args_help
 
     _fps_ = FPS()
     rotate = None
@@ -1420,20 +1416,20 @@ def parse_arguments():
     parser.add_argument("--debug-video", action="store_true",
                         help="save video to testfile")
     parser.add_argument("--debug-face", action="store_true",
-                        help="")
+                        help="output face debug data")
     parser.add_argument("--debug-brows", action="store_true",
-                        help="")
+                        help="output eyebrows debug data")
     parser.add_argument("--debug-eyes", action="store_true",
-                        help="")
+                        help="output eyes debug data")
     parser.add_argument("--debug-mouth", action="store_true",
-                        help="")
+                        help="output mouth debug data")
     parser.add_argument("--debug-nose", action="store_true",
-                        help="")
+                        help="output nose debug data")
     parser.add_argument("--debug-mouse", action="store_true",
-                        help="")
+                        help="output mouse debug data")
 
     args = parser.parse_args()
-    return args
+    return args, parser
 
 
 def point_distance(p1, p2):
@@ -1477,7 +1473,13 @@ def start_face_detect_procs(detector, predictor):
     global restart
     global running
 
+    args_help = {}
+    for action in _parser_._actions:
+        args_help[action.dest] = getattr(action, 'help', '')
+
     ws = WebServer(host='0.0.0.0', port=8000, debug=True, threaded=True, use_reloader=False).start()
+    ws.app.jinja_env.globals['args'] = _args_
+    ws.app.jinja_env.globals['args_help'] = args_help
 
     if _args_.verbose > 0:
         log.info("{} pid {}".format(mp.current_process().name, mp.current_process().pid))
@@ -1691,8 +1693,9 @@ def main():
     global running
     global restart
     global _args_
+    global _parser_
 
-    _args_ = parse_arguments()
+    _args_, _parser_ = parse_arguments()
 
     if _args_.verbose > 2:
         _args_.verbose = 2
@@ -1779,6 +1782,7 @@ if __name__ == '__main__':
     running = True
     restart = False
     global _args_
+    global _parser_
     global _fps_
 
     sys.exit(main())

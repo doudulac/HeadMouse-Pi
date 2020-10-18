@@ -8,3 +8,4 @@ scipy
 systemd-python
 picamera
 flask
+flask-wtf
