@@ -1304,12 +1304,11 @@ def kalmanfilter_dim2_init(dt=1 / 20, Q=2.0, R=2.0):
 
 
 def parse_arguments():
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument("-c", "--camera-mode", default=2, type=int, choices=range(1, 5),
-                        help="camera mode 1:320x240@30 2:640x480@30 3:800x600@15 4:1024x768@10" +
-                             " (default: 2)")
+                        help="camera mode 1:320x240@30 2:640x480@30 3:800x600@15 4:1024x768@10")
     parser.add_argument("-e", "--ebd", default=4.0, type=float,
-                        help="Eyebrow distance for click (default: 4.0)")
+                        help="Eyebrow distance for click")
     parser.add_argument("-f", "--filter", action="store_true",
                         help="enable filter")
     parser.add_argument("-k", "--stickyclick", action="store_true",
@@ -1319,9 +1318,9 @@ def parse_arguments():
     parser.add_argument("-q", "--qmode", action="store_true",
                         help="enable queue mode")
     parser.add_argument("-r", "--procs", default=5, type=int,
-                        help="number of procs (default: 5)")
+                        help="number of procs")
     parser.add_argument("-s", "--smoothness", default=3, type=int, choices=range(1, 9),
-                        help="smoothness 1-8 (default: 3)")
+                        help="smoothness 1-8")
     parser.add_argument("-u", "--usbcam", action="store_true",
                         help="Use usb camera instead of PiCamera")
     parser.add_argument("-v", "--verbose", action="count", default=0,
@@ -1331,7 +1330,7 @@ def parse_arguments():
     parser.add_argument("-y", "--ygain", default=4.5, type=float,
                         help="Y gain")
     parser.add_argument("--ear", default=.15,
-                        help="eye aspect ratio threshold (default: .15)")
+                        help="eye aspect ratio threshold")
     parser.add_argument("--onraspi", action="store_true",
                         help="force raspi mode")
     parser.add_argument("--debug", action="store_true",
