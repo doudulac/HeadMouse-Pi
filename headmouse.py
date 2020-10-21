@@ -861,6 +861,9 @@ class MousePointer(object):
 
         self._click = click
 
+        if _args_.debug_mouse and click:
+            log.info('click {}'.format(click))
+
         return click
 
     def process_pause(self):
@@ -906,9 +909,6 @@ class MousePointer(object):
             self.send_mouse_absolute(x, y, 0)
 
     def send_mouse_relative(self, click, dx, dy):
-        if _args_.verbose > 1 and click:
-            log.info('click {}'.format(click))
-
         if self._fd is not None and not _args_.debug:
             report = struct.pack('<2b2h', 2, click, dx, dy)
             self._fd.write(report)
