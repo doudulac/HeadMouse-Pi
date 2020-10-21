@@ -7,10 +7,8 @@ if [ x"$1" = "x" ]; then
   exit 1
 fi
 
-FILES="$DIR/head* $DIR/inst* $DIR/unins*"
+FILES="$DIR/head* $DIR/inst* $DIR/unins* $DIR/require* $DIR/shape*"
 
 ssh "$1" "[ ! -d /hmpi ] && sudo mkdir /hmpi && sudo chown pi:pi /hmpi"
 
-ssh "$1" test -e /hmpi/shape_predictor_68_face_landmarks.dat || FILES+=" $DIR/shape*"
-
-scp $FILES pi@"$1":/hmpi/
+rsync -av --del -e "ssh -l pi" $FILES pi@"$1":/hmpi/
