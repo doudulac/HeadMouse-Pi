@@ -22,7 +22,10 @@ def preferences():
         for field in iter(form):
             if field.name in args:
                 setattr(args, field.name, request.form.get(field.name))
-        return render_template('preferences.html', form=form)
+        return render_template('preferences.html',
+                               msg='Preferences set successfully!',
+                               icon='success',
+                               form=form)
 
     else:
         for field in iter(form):
