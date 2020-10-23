@@ -909,12 +909,12 @@ class MousePointer(object):
         if _args_.verbose > 1 and click:
             log.info('click {}'.format(click))
 
-        if self._fd is not None:
+        if self._fd is not None and not _args_.debug:
             report = struct.pack('<2b2h', 2, click, dx, dy)
             self._fd.write(report)
 
     def send_mouse_absolute(self, _x, _y, wheel):
-        if self._fd is not None:
+        if self._fd is not None and not _args_.debug:
             report = struct.pack('<b2hb', 3, _x, _y, wheel)
             self._fd.write(report)
 
@@ -1141,8 +1141,6 @@ def face_detect(demoq, detector, predictor):
 
     face = Face(fps=framerate)
     mouse = MousePointer(face=face)
-    if _args_.debug:
-        mouse.close_hidg()
 
     wd = int(int(os.getenv('WATCHDOG_USEC', 0)) / 1000000)
     if wd > 0:
@@ -1437,8 +1435,6 @@ def start_face_detect_procs(detector, predictor):
 
     face = Face(fps=framerate)
     mouse = MousePointer(face=face)
-    if _args_.debug:
-        mouse.close_hidg()
 
     wd = int(int(os.getenv('WATCHDOG_USEC', 0)) / 1000000)
     if wd > 0:
