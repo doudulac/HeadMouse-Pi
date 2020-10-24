@@ -19,12 +19,19 @@ def preferences():
     args = current_app.jinja_env.globals['args']
     form = PreferencesForm(request.form)
     if 'preferences' in request.form:
-        for field in iter(form):
-            if field.name in args:
-                setattr(args, field.name, request.form.get(field.name))
+        if form.validate_on_submit():
+            for field in iter(form):
+                if field.name in args:
+                    setattr(args, field.name, field.data)
+            icon = 'success'
+            msg = 'Preferences set successfully!'
+        else:
+            icon = 'error'
+            msg = 'Submission Errors'
+
         return render_template('preferences.html',
-                               msg='Preferences set successfully!',
-                               icon='success',
+                               msg=msg,
+                               icon=icon,
                                form=form)
 
     else:

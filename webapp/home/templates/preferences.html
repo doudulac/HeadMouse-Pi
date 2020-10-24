@@ -42,47 +42,60 @@
     <!-- Main content -->
     <section class="content">
       <div class="container-fluid">
-            <!-- general form elements -->
-            <div class="card card-light">
-              <div class="card-header">
-                <h3 class="card-title">Debug Options</h3>
+        <!-- general form elements -->
+        <div class="card card-light">
+          <div class="card-header">
+            <h3 class="card-title">Debug Options</h3>
+          </div>
+          <!-- /.card-header -->
+          <!-- form start -->
+          <form role="form" method="post" action="">
+
+            {{ form.hidden_tag() }}
+
+            <div class="card-body">
+              <div class="form-group">
+                <dl class="row">
+                {% for field in form if field.name in args %}
+                  <dt class="col-sm-3">
+                  {% if field.widget.input_type == 'checkbox' %}
+                    <div class="custom-control custom-checkbox">
+                      {{ field(class="custom-control-input") }}
+                      {{ field.label(class="custom-control-label") }}
+                    </div>
+                  {% elif field.widget.input_type == 'text' %}
+                    <div class="form-field">
+                      {{ field.label() }}
+                      {% if not field.errors %}
+                        {{ field(class="form-control") }}
+                      {% else %}
+                        {{ field(class="form-control is-invalid") }}
+                        {% for error in field.errors %}
+                          <div class="invalid-feedback">
+                          {{ error }}
+                          </div>
+                        {% endfor %}
+                      {% endif %}
+                    </div>
+                  {% endif %}
+                  </dt>
+                  <dd class="col-sm-9">
+                    {{ args_help[field.name] }}
+                  </dd>
+                {% endfor %}
+                </dl>
               </div>
-              <!-- /.card-header -->
-              <!-- form start -->
-              <form role="form" method="post" action="">
-
-                {{ form.hidden_tag() }}
-
-                <div class="card-body">
-                  <div class="form-group">
-                    <dl class="row">
-                      {% for field in form if field.name in args %}
-                      <dt class="col-sm-3">
-                        <div class="custom-control custom-checkbox">
-                          {{ field(class="custom-control-input") }}
-                          {{ field.label(class="custom-control-label") }}
-                        </div>
-                      </dt>
-                      <dd class="col-sm-9">
-                        {{ args_help[field.name] }}
-                      </dd>
-                      {% endfor %}
-                    </dl>
-                  </div>
-                </div>
-                <!-- /.card-body -->
-
-                <div class="card-footer">
-                  <button type="submit" name="preferences" class="btn btn-dark">Submit</button>
-                </div>
-              </form>
             </div>
-            <!-- /.card -->
-<!--          </div>-->
-<!--          &lt;!&ndash;/.col (right) &ndash;&gt;-->
-<!--        </div>-->
-<!--        &lt;!&ndash; /.row &ndash;&gt;-->
-      </div><!-- /.container-fluid -->
+            <!-- /.card-body -->
+
+            <div class="card-footer">
+              <button type="submit" name="preferences" class="btn btn-dark">Submit</button>
+            </div>
+          </form>
+        </div>
+        <!-- /.card -->
+      </div>
+      <!-- /.container-fluid -->
     </section>
     <!-- /.content -->
   </div>

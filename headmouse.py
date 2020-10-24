@@ -770,6 +770,8 @@ class MousePointer(object):
         dx *= self.xgain
         dy *= self.ygain
         if not _args_.filter:
+            if _args_.smoothness != self._smoothness:
+                self.set_smoothness(_args_.smoothness)
             dx = dx * (1.0 - self._motionweight) + self._prevdx * self._motionweight
             dy = dy * (1.0 - self._motionweight) + self._prevdy * self._motionweight
             self._prevdx = dx

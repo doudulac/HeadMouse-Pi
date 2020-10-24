@@ -4,8 +4,8 @@ Copyright (c) 2019 - present AppSeed.us
 """
 
 from flask_wtf import FlaskForm
-from wtforms import TextField, PasswordField, BooleanField
-# from wtforms.validators import InputRequired, Email, DataRequired
+from wtforms import TextField, IntegerField, FloatField, BooleanField
+from wtforms.validators import DataRequired, NumberRange
 
 
 class PreferencesForm(FlaskForm):
@@ -18,3 +18,6 @@ class PreferencesForm(FlaskForm):
     debug_brows = BooleanField('debug brows', id='debug_brows')
     filter = BooleanField('filter', id='filter')
     stickyclick = BooleanField('sticky click', id='stickyclick')
+
+    ebd = FloatField('eyebrow distance', id='ebd')
+    smoothness = IntegerField('smoothness', id='smoothness', validators=[NumberRange(1, 8)])
