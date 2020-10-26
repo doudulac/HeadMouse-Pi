@@ -16,7 +16,6 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-import argparse
 import logging
 import math
 import multiprocessing as mp
@@ -30,6 +29,7 @@ import subprocess
 import sys
 import time
 import traceback
+from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
 from os.path import getmtime
 from threading import Thread
 
@@ -1065,6 +1065,12 @@ class WebServer(object):
         return Response(self.get_image(), mimetype='multipart/x-mixed-replace; boundary=frame')
 
 
+class MyArgumentParser(ArgumentParser):
+    @property
+    def actions(self):
+        return self._actions
+
+
 def annotate_frame(frame, shapes, face, mouse):
     nose = face.nose
     brows = face.brows
@@ -1184,7 +1190,7 @@ def face_detect(demoq, detector, predictor):
     global _fps_
 
     args_help = {}
-    for action in _parser_._actions:
+    for action in _parser_.actions:
         args_help[action.dest] = getattr(action, 'help', '')
 
     ws = WebServer(host='0.0.0.0', port=8000, debug=True, threaded=True, use_reloader=False).start()
@@ -1384,7 +1390,8 @@ def kalmanfilter_dim2_init(dt=1 / 20, Q=2.0, R=2.0):
 
 
 def parse_arguments():
-    parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    # noinspection PyTypeChecker
+    parser = MyArgumentParser(formatter_class=ArgumentDefaultsHelpFormatter)
     parser.add_argument("-c", "--camera-mode", default=2, type=int, choices=range(1, 5),
                         help="camera mode 1:320x240@30 2:640x480@30 3:800x600@15 4:1024x768@10")
     parser.add_argument("-e", "--ebd", default=4.0, type=float,
@@ -1476,7 +1483,7 @@ def start_face_detect_procs(detector, predictor):
     global running
 
     args_help = {}
-    for action in _parser_._actions:
+    for action in _parser_.actions:
         args_help[action.dest] = getattr(action, 'help', '')
 
     ws = WebServer(host='0.0.0.0', port=8000, debug=True, threaded=True, use_reloader=False).start()
