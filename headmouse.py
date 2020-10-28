@@ -495,13 +495,24 @@ class Eyebrows(object):
         # moutho 48,59
         # mouthi 60,67
 
-        leye = feature_center(shapes[42:48])
-        reye = feature_center(shapes[36:42])
-        pdist = point_distance(leye, reye)
         ebc = feature_center([shapes[19], shapes[24]])
-        eyec = feature_center(shapes[36:48])
-        ebd = point_distance(ebc, eyec)
-        _r = ebd / pdist
+        ebd = point_distance(ebc, shapes[27])
+
+        self._kf.predict()
+        self._kf.update(ebd)
+        kpos = self._kf.x[0][0]
+        kvel = self._kf.x[1][0]
+        kacc = self._kf.x[2][0]
+        # if not self.vup:
+        #     if kvel >= 5:
+        #         self.vup = True
+        #         self.kvelmax = kvel
+        # else:
+        #     if kvel >= self.kvelmax:
+        #         self.kvelmax = kvel
+        #     else:
+        #         self.vup = False
+        #         self.kvelmax = 0
 
         _n = 6
         _s = -2
@@ -513,16 +524,18 @@ class Eyebrows(object):
 
         self._cur_height = sum(self._ebds[_s:]) / len(self._ebds[_s:])
         self._ave_height = sum(self._ebds[:_s]) / len(self._ebds[:_s])
+        _d = self._cur_height - self._ave_height
+        f_a = 10 > self.face.x_angle > -10 and 10 > self.face.y_angle > -10
+        h_y = self._cur_height >= 18
 
         d_angle = self.face.y_angle - self.face.y_ave_angle
         if _args_.stickyclick:
-            raised = self._cur_height - self._ave_height > _args_.ebd and d_angle < 2.0
+            raised = f_a and h_y and _d >= _args_.ebd and d_angle < 2.0
             if not self._raised:
                 self._raised = raised
             else:
                 d_angle = self.face.y_ave_angle - self.face.y_angle
-                lowered = self._ave_height - self._cur_height > _args_.ebd * .60 and \
-                    d_angle < 2.0
+                lowered = f_a and -_d >= _args_.ebd * .60 and d_angle < 2.0
                 if not self._sticky_raised or self._raised_count > 0:
                     self._raised = not lowered
                 elif raised:
@@ -537,11 +550,15 @@ class Eyebrows(object):
                 self._raised_count = 0
 
         else:
-            self._raised = self._cur_height - self._ave_height > _args_.ebd and d_angle < 2.0
+            self._raised = f_a and h_y and _d > _args_.ebd and d_angle < 2.0
 
         if _args_.debug_brows:
-            line = "brows {:.02f} {:.02f} {:.02f} {:.02f} {:.02f}"
-            log.info(line.format(self._ave_height, self._cur_height, _r, pdist, ebd))
+            line = "brows {:.02f}/{:.02f} x[{:.02f}] v[{:6.02f}] a[{:7.02f}] f[{:5.02f}/{:5.02f}] d[{:5.02f}] {} {}"
+            updown = "up" if self._raised else "  "
+            updown += '+' if self._sticky_raised else ' '
+            vup = '^' if self.vup else ' '
+            log.info(line.format(self._ave_height, self._cur_height, kpos, kvel, kacc,
+                                 self.face.x_angle, self.face.y_angle, _d, updown, vup))
 
     def reset(self):
         self._raised = False
@@ -1416,7 +1433,7 @@ def parse_arguments():
     parser = MyArgumentParser(formatter_class=ArgumentDefaultsHelpFormatter)
     parser.add_argument("-c", "--camera-mode", default=2, type=int, choices=range(1, 5),
                         help="camera mode 1:320x240@30 2:640x480@30 3:800x600@15 4:1024x768@10")
-    parser.add_argument("-e", "--ebd", default=4.0, type=float,
+    parser.add_argument("-e", "--ebd", default=2.0, type=float,
                         help="Eyebrow distance for click")
     parser.add_argument("-f", "--filter", action="store_true",
                         help="enable filter")
