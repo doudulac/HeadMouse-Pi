@@ -476,6 +476,9 @@ class Eyebrows(object):
         self._raised = False
         self._raised_count = 0
         self._sticky_raised = False
+        self._kf = kalmanfilter_dim3_init(dt=1/30, Q=5.0 ** 2, R=.5)
+        self.vup = False
+        self.kvelmax = 0
 
     def update(self):
         shapes = self.face.shapes
@@ -1368,6 +1371,25 @@ def kalmanfilter_dim4_init(dt=1 / 20, Q=2.0, R=2.0):
     f.x = np.array([[0., 0., 0., 0.]]).T
     # Current state covariance matrix
     f.P = np.eye(4) * 1000.
+    return f
+
+
+def kalmanfilter_dim3_init(dt=1 / 20, Q=2.0, R=2.0):
+    f = KalmanFilter(dim_x=3, dim_z=1)
+    # State Transition matrix
+    f.F = np.array([[1., dt, .5 * dt**2],
+                    [0., 1., dt],
+                    [0., 0., 1.]])
+    # Process noise matrix
+    f.Q = Q_discrete_white_noise(dim=3, dt=dt, var=Q)
+    # Measurement function
+    f.H = np.array([[1., 0., 0.]])
+    # Measurement noise matrix
+    f.R = np.array([[R]])
+    # Current state estimate
+    f.x = np.array([[0., 0., 0.]]).T
+    # Current state covariance matrix
+    f.P = np.eye(3) * 1000.
     return f
 
 
