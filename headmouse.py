@@ -522,10 +522,11 @@ class Eyebrows(object):
             self._ebds.append(self._ebds.pop(0))
             self._ebds[-1] = ebd
 
+        maxangle = 12
         self._cur_height = sum(self._ebds[_s:]) / len(self._ebds[_s:])
         self._ave_height = sum(self._ebds[:_s]) / len(self._ebds[:_s])
         _d = self._cur_height - self._ave_height
-        f_a = 10 > self.face.x_angle > -10 and 10 > self.face.y_angle > -10
+        f_a = maxangle > self.face.x_angle > -maxangle and maxangle > self.face.y_angle > -maxangle
         h_y = self._cur_height >= 18
 
         d_angle = self.face.y_angle - self.face.y_ave_angle
