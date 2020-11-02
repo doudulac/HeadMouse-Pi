@@ -7,3 +7,4 @@ TODO unlink gestures from actions
 TODO adjust sensitivity based on head size/ratio
 TODO config file for persistent preferences
 TODO websockets for realtime data to client
+TODO keep systemd from restarting during auto-restart
