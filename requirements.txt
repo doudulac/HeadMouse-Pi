@@ -9,3 +9,5 @@ systemd-python
 picamera
 flask
 flask-wtf
+flask-socketio
+eventlet

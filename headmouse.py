@@ -35,11 +35,13 @@ from threading import Thread
 
 import cv2
 import dlib
+import eventlet
 import numpy as np
 import yappi
 from filterpy.common.discretization import Q_discrete_white_noise
 from filterpy.kalman import KalmanFilter
 from flask import Response
+from flask_socketio import SocketIO
 from imutils import face_utils
 from imutils.video import FPS
 from scipy.linalg import block_diag
@@ -310,26 +312,31 @@ class MyVideoCapture(object):
 
 
 class Face(object):
-    def __init__(self, fps):
+    def __init__(self, fps, webserver=None):
         self._angs_x = None
         self._angs_y = None
         self._cur_angle = [0, 0]
         self._ave_angle = None
         self._center = None
         self._shapes = None
+        self._framenum = None
+        self._ws = webserver
 
-        self.mouth = MouthOpen(face=self)
-        self.eyes = Eyes(face=self, fps=fps)
-        self.brows = Eyebrows(face=self)
-        self.nose = Nose(face=self, fps=fps)
+        self.mouth = MouthOpen(face=self, webserver=webserver)
+        self.eyes = Eyes(face=self, fps=fps, webserver=webserver)
+        self.brows = Eyebrows(face=self, webserver=webserver)
+        self.nose = Nose(face=self, fps=fps, webserver=webserver)
 
-    def update(self, shapes):
+    def update(self, framenum, shapes):
+        self._framenum = framenum
         self._shapes = shapes
         self._update_posture()
         self.mouth.update()
         self.eyes.update()
         self.brows.update()
         self.nose.update()
+        # let the socketio green threads do some work
+        self._ws.socketio.sleep(0)
 
     def _update_posture(self):
         shapes = self.shapes
@@ -378,6 +385,10 @@ class Face(object):
         return self._shapes
 
     @property
+    def framenum(self):
+        return self._framenum
+
+    @property
     def center(self):
         return self._center
 
@@ -407,7 +418,7 @@ class Face(object):
 
 
 class MouthOpen(object):
-    def __init__(self, face):
+    def __init__(self, face, webserver=None):
         self.face = face
         self._vdists = None
         self._cur_vdist = None
@@ -468,7 +479,7 @@ class MouthOpen(object):
 
 
 class Eyebrows(object):
-    def __init__(self, face):
+    def __init__(self, face, webserver=None):
         self.face = face
         self._ebds = None
         self._cur_height = None
@@ -479,9 +490,11 @@ class Eyebrows(object):
         self._kf = kalmanfilter_dim3_init(dt=1/30, Q=5.0 ** 2, R=.5)
         self.vup = False
         self.kvelmax = 0
+        self._ws = webserver
 
     def update(self):
         shapes = self.face.shapes
+        framenum = self.face.framenum
         if shapes is None:
             return
 
@@ -553,13 +566,15 @@ class Eyebrows(object):
         else:
             self._raised = f_a and h_y and _d > _args_.ebd and d_angle < 2.0
 
+        updown = "up" if self._raised else "  "
+        updown += '+' if self._sticky_raised else ' '
+        vup = '^' if self.vup else ' '
         if _args_.debug_brows:
             line = "brows {:.02f}/{:.02f} x[{:.02f}] v[{:6.02f}] a[{:7.02f}] f[{:5.02f}/{:5.02f}] d[{:5.02f}] {} {}"
-            updown = "up" if self._raised else "  "
-            updown += '+' if self._sticky_raised else ' '
-            vup = '^' if self.vup else ' '
             log.info(line.format(self._ave_height, self._cur_height, kpos, kvel, kacc,
                                  self.face.x_angle, self.face.y_angle, _d, updown, vup))
+        self._ws.socketio.emit('eyebrows', [self._ave_height, self._cur_height, kpos, kvel, kacc,
+                                            self.face.x_angle, self.face.y_angle, _d, updown, vup])
 
     def reset(self):
         self._raised = False
@@ -586,7 +601,7 @@ class Eyebrows(object):
 
 
 class Eyes(object):
-    def __init__(self, face, fps=None):
+    def __init__(self, face, fps=None, webserver=None):
         self.face = face
         self._open = False
         if fps is None:
@@ -641,7 +656,7 @@ class Eyes(object):
 
 
 class Nose(object):
-    def __init__(self, face, fps=None):
+    def __init__(self, face, fps=None, webserver=None):
         self.face = face
         self._positions = None
         self.nose_raw = [0, 0]
@@ -736,7 +751,7 @@ class Nose(object):
 
 
 class MousePointer(object):
-    def __init__(self, face, mindeltathresh=None):
+    def __init__(self, face, mindeltathresh=None, webserver=None):
         self.face = face
         self._fd = None
         self.open_hidg()
@@ -1039,25 +1054,28 @@ class MyLogger(object):
 
 class WebAppConfig(object):
     basedir = os.path.abspath(os.path.dirname(__file__))
-    DEBUG = True
-    ENV = 'development'
     SECRET_KEY = 'H34dM0u53@S#perS3crEt=007'
+    # DEBUG = True
+    # ENV = 'development'
 
 
 class WebServer(object):
-    def __init__(self, *args, **kwargs):
-        self.args = args
-        self.kwargs = kwargs
-        self.thread = None
-        self.queue = queue.Queue()
-        self.last_access = 0
+    def __init__(self):
         self.app = create_app(WebAppConfig())
+        self.log_socket = logging.getLogger('socketio.server')
+        self.log_socket.setLevel(logging.ERROR)
+        self.log_engine = logging.getLogger('engineio.server')
+        self.log_engine.setLevel(logging.ERROR)
+        self.socketio = SocketIO(self.app, debug=False, logger=self.log_socket, engineio_logger=self.log_engine)
+        self.thread = None
+
+        self.queue = eventlet.queue.Queue()
+        self.last_access = 0
         self.app.add_url_rule('/video_feed', 'video_feed', self.video_feed)
 
     def start(self):
-        self.thread = Thread(target=self.app.run, args=self.args, kwargs=self.kwargs)
-        self.thread.daemon = True
-        self.thread.start()
+        self.thread = self.socketio.start_background_task(self.socketio.run, self.app, host='0.0.0.0', port=8000,
+                                                          use_reloader=False)
         return self
 
     def put_image(self, frame):
@@ -1214,7 +1232,7 @@ def face_detect(demoq, detector, predictor):
     for action in _parser_.actions:
         args_help[action.dest] = getattr(action, 'help', '')
 
-    ws = WebServer(host='0.0.0.0', port=8000, debug=True, threaded=True, use_reloader=False).start()
+    ws = WebServer().start()
     ws.app.jinja_env.globals['args'] = _args_
     ws.app.jinja_env.globals['args_help'] = args_help
 
@@ -1246,8 +1264,8 @@ def face_detect(demoq, detector, predictor):
     else:
         writer = None
 
-    face = Face(fps=framerate)
-    mouse = MousePointer(face=face)
+    face = Face(fps=framerate, webserver=ws)
+    mouse = MousePointer(face=face, webserver=ws)
 
     wd = int(int(os.getenv('WATCHDOG_USEC', 0)) / 1000000)
     if wd > 0:
@@ -1311,7 +1329,7 @@ def face_detect(demoq, detector, predictor):
         except ZeroDivisionError:
             _fps_.start()
 
-        face.update(shapes)
+        face.update(framenum, shapes)
         try:
             mouse.update()
         except BrokenPipeError as e:
@@ -1526,7 +1544,7 @@ def start_face_detect_procs(detector, predictor):
     for action in _parser_.actions:
         args_help[action.dest] = getattr(action, 'help', '')
 
-    ws = WebServer(host='0.0.0.0', port=8000, debug=True, threaded=True, use_reloader=False).start()
+    ws = WebServer().start()
     ws.app.jinja_env.globals['args'] = _args_
     ws.app.jinja_env.globals['args_help'] = args_help
 
@@ -1570,8 +1588,8 @@ def start_face_detect_procs(detector, predictor):
     else:
         writer = None
 
-    face = Face(fps=framerate)
-    mouse = MousePointer(face=face)
+    face = Face(fps=framerate, webserver=ws)
+    mouse = MousePointer(face=face, webserver=ws)
 
     wd = int(int(os.getenv('WATCHDOG_USEC', 0)) / 1000000)
     if wd > 0:
@@ -1643,7 +1661,7 @@ def start_face_detect_procs(detector, predictor):
             except ZeroDivisionError:
                 _fps_.start()
 
-            face.update(shapes)
+            face.update(framenum, shapes)
             mouse.update()
 
             if not _args_.onraspi or writer is not None or ws.has_client():
@@ -1782,7 +1800,6 @@ def main():
 
     cwd = os.path.abspath(os.path.dirname(__file__))
     model_path = os.path.abspath(os.path.join(cwd, "shape_predictor_68_face_landmarks.dat"))
-    # model_path = os.path.abspath(os.path.join(cwd, "shape_predictor_5_face_landmarks.dat"))
     detector = dlib.get_frontal_face_detector()
     predictor = dlib.shape_predictor(model_path)
     if _args_.verbose > 0:
@@ -1791,8 +1808,7 @@ def main():
     renice(-10, mp.current_process().pid)
 
     origsig = [signal.signal(signal.SIGINT, sig_handler),
-               signal.signal(signal.SIGTERM, sig_handler),
-               signal.signal(signal.SIGPIPE, sig_handler), ]
+               signal.signal(signal.SIGTERM, sig_handler), ]
     try:
         if _args_.procs > 0:
             start_face_detect_procs(detector, predictor)
@@ -1801,8 +1817,8 @@ def main():
     except Exception:
         signal.signal(signal.SIGINT, origsig[0])
         signal.signal(signal.SIGTERM, origsig[1])
-        signal.signal(signal.SIGPIPE, origsig[2])
         raise
+
     if _args_.profile:
         yappi.stop()
 
@@ -1814,9 +1830,6 @@ def main():
                 "Function stats for (%s) (%d)" % (thread.name, thread.id)
             )  # it is the Thread.__class__.__name__
             yappi.get_func_stats(ctx_id=thread.id).print_all()
-
-    # sys.stdout.flush()
-    # sys.stderr.flush()
 
     if restart:
         if _args_.verbose > 0:

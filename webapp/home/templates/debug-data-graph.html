@@ -1,0 +1,115 @@
+{% extends "layouts/base.html" %}
+
+{% block title %} Flot Charts {% endblock %}
+
+<!-- Element injected in the BODY element -->
+{% block body_class %} sidebar-mini layout-fixed {% endblock body_class %}
+
+<!-- Specific Page CSS goes HERE  -->
+{% block stylesheets %}
+
+  <!-- Google Font: Source Sans Pro -->
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Source+Sans+Pro:300,400,400i,700&display=fallback">
+  <!-- Font Awesome -->
+  <link rel="stylesheet" href="/static/assets/plugins/fontawesome-free/css/all.min.css">
+  <!-- Theme style -->
+  <link rel="stylesheet" href="/static/assets/css/adminlte.min.css">
+  <!-- Fix for flot legends -->
+  <style>
+    .legendLayer .background {
+      fill: rgba(255, 255, 255, 0.85);
+      stroke: rgba(0, 0, 0, 0.85);
+      stroke-width: 1;
+    }
+  </style>
+
+{% endblock stylesheets %}
+
+{% block content %}
+
+  <div class="content-wrapper">
+
+      <!-- Content Header (Page header) -->
+      <section class="content-header">
+        <div class="container-fluid">
+          <div class="row mb-2">
+            <div class="col-sm-6">
+              <h1>Debug Data</h1>
+            </div>
+            <div class="col-sm-6">
+              <ol class="breadcrumb float-sm-right">
+                <li class="breadcrumb-item"><a href="#">Home</a></li>
+                <li class="breadcrumb-item active">Debug Data</li>
+              </ol>
+            </div>
+          </div>
+        </div><!-- /.container-fluid -->
+      </section>
+
+      <!-- Main content -->
+      <section class="content">
+        <div class="container-fluid">
+          <div class="row">
+            <div class="col-12">
+              <!-- interactive chart -->
+              <div class="card card-primary card-outline">
+                <div class="card-header">
+                  <h3 class="card-title">
+                    <i class="far fa-chart-bar"></i>
+                    Eyebrows
+                  </h3>
+
+                  <div class="card-tools">
+                    Real time
+                    <div class="btn-group" id="realtime" data-toggle="btn-toggle">
+                      <button type="button" class="btn btn-default btn-sm active" data-toggle="on">On</button>
+                      <button type="button" class="btn btn-default btn-sm" data-toggle="off">Off</button>
+                    </div>
+                  </div>
+                </div>
+                <div class="card-body">
+                  <div id="eyebrow" style="height: 300px;"></div>
+                </div>
+                <!-- /.card-body-->
+              </div>
+              <!-- /.card -->
+
+            </div>
+            <!-- /.col -->
+          </div>
+          <!-- /.row -->
+        </div><!-- /.container-fluid -->
+      </section>
+
+  </div>
+
+{% endblock content %}
+
+<!-- Specific Page JS goes HERE  -->
+{% block javascripts %}
+
+  <!-- jQuery -->
+  <script src="/static/assets/plugins/jquery/jquery.min.js"></script>
+  <!-- jQuery UI -->
+  <script src="/static/assets/plugins/jquery-ui/jquery-ui.min.js"></script>
+  <!-- Bootstrap 4 -->
+  <script src="/static/assets/plugins/bootstrap/js/bootstrap.bundle.min.js"></script>
+  <!-- AdminLTE App -->
+  <script src="/static/assets/js/adminlte.min.js"></script>
+  <!-- FLOT CHARTS -->
+  <script src="/static/assets/plugins/flot/jquery.flot.js"></script>
+  <!-- FLOT RESIZE PLUGIN - allows the chart to redraw when the window is resized -->
+  <script src="/static/assets/plugins/flot-old/jquery.flot.resize.js"></script>
+  <script src="/static/assets/plugins/flot-old/jquery.flot.time.js"></script>
+  <!-- socket.io-client -->
+  <script src="/static/assets/plugins/socket.io/socket.io.js"></script>
+
+  <!-- Page script -->
+  <script src="/static/assets/js/pages/debug-data-graph.js"></script>
+  <script>
+    $(document).ready(function(){
+      runScript();
+    });
+  </script>
+
+{% endblock javascripts %}
