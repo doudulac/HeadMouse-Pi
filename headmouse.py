@@ -1213,7 +1213,7 @@ def face_detect_mp(frameq, shapesq, cmdq, detector, predictor, args):
                                        int(faces[0].bottom() / r))
             shapes = predictor(gframe, face_rect)
             shapes = face_utils.shape_to_np(shapes)
-        if not sendframe:
+        if not sendframe or framenum % 4:
             frame = None
         shapesq.put_nowait((framenum, frame, shapes))
 
