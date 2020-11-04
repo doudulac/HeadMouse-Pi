@@ -4,14 +4,14 @@ Copyright (c) 2019 - present AppSeed.us
 """
 
 from webapp.home import blueprint
-from flask import render_template
+from flask import render_template, redirect
 from jinja2 import TemplateNotFound
 
 
 @blueprint.route('/index')
 def index():
 
-    return render_template('index.html')
+    return redirect('preferences')
 
 
 @blueprint.route('/<template>')
