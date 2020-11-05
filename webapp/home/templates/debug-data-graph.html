@@ -14,8 +14,15 @@
   <link rel="stylesheet" href="/static/assets/plugins/fontawesome-free/css/all.min.css">
   <!-- Theme style -->
   <link rel="stylesheet" href="/static/assets/css/adminlte.min.css">
-  <!-- Fix for flot legends -->
+
   <style>
+    .grid-container {
+      display: grid;
+      grid-template-columns: auto 130px;
+      padding: 10px;
+    }
+
+    /* Fix for flot legend */
     .legendLayer .background {
       fill: rgba(255, 255, 255, 0.85);
       stroke: rgba(0, 0, 0, 0.85);
@@ -68,7 +75,10 @@
                   </div>
                 </div>
                 <div class="card-body">
-                  <div id="eyebrow" style="height: 300px;"></div>
+                  <div class="grid-container">
+                    <div id="eyebrow" style="height: 300px;"></div>
+                    <div id="choices"></div>
+                  </div>
                 </div>
                 <!-- /.card-body-->
               </div>

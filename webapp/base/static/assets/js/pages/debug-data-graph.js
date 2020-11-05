@@ -6,7 +6,51 @@ var runScript = function() {
     var pos_buf = [];
     var vel_buf = [];
     var acc_buf = [];
-    var updateInterval = 30; // ms
+    var updateInterval = 30;   // ms
+    var realtime       = 'on'; //If == to on then fetch data every x seconds. else stop fetching
+
+    var datasets = {
+        "average height": {
+            xaxis: 1, yaxis: 1,
+            label: "average height",
+            data: ave_buf,
+        },
+        "current height": {
+            xaxis: 1, yaxis: 1,
+            label: "current height",
+            data: cur_buf,
+        },
+        "kf position": {
+            xaxis: 1, yaxis: 1,
+            label: "kf position",
+            data: pos_buf,
+        },
+        "kf velocity": {
+            xaxis: 1, yaxis: 2,
+            label: "kf velocity",
+            data: vel_buf,
+        },
+        "kf acceleration": {
+            xaxis: 1, yaxis: 2,
+            label: "kf acceleration",
+            data: acc_buf,
+        },
+    };
+
+    var i = 0;
+    $.each(datasets, function(key, val) {
+        val.color = i;
+        ++i;
+    });
+
+    // insert checkboxes
+    var choiceContainer = $("#choices");
+    $.each(datasets, function(key, val) {
+        choiceContainer.append("<br/><input type='checkbox' name='" + key +
+            "' checked='checked' id='id" + key + "'></input>" +
+            "&nbsp;<label for='id" + key + "'>"
+            + val.label + "</label>");
+    });
 
     var eyebrow_plot = $.plot('#eyebrow', getData(),
     {
@@ -14,59 +58,37 @@ var runScript = function() {
             show: true,
             position: "sw",
         },
-      grid: {
-        borderColor: '#f3f3f3',
-        borderWidth: 1,
-        tickColor: '#f3f3f3'
-      },
-      series: {
-//        color: '#3c8dbc',
-        lines: {
-          lineWidth: 2,
-          show: true,
-          fill: true,
+        grid: {
+            borderColor: '#f3f3f3',
+            borderWidth: 1,
+            tickColor: '#f3f3f3',
         },
-      },
-      yaxes: [{min: 0, max: 50,}, {position: "right"}],
-      xaxes: [{
-        mode: "time",
-        timeBase: "milliseconds",
-        timeformat: "%I:%M:%S",
-        timezone: "browser",
-        show: true,
-      }],
+        series: {
+            color: '#3c8dbc',
+            lines: {
+                lineWidth: 2,
+                show: true,
+                fill: true,
+            },
+        },
+        yaxes: [{min: 0, max: 50,}, {position: "right"}],
+        xaxes: [{
+            mode: "time",
+            timeBase: "milliseconds",
+            timeformat: "%I:%M:%S",
+            timezone: "browser",
+            show: true,
+        }],
     });
 
-    var realtime       = 'on'; //If == to on then fetch data every x seconds. else stop fetching
-
     function getData() {
-        var data = [
-            {
-                xaxis: 1, yaxis: 1,
-                label: "average height",
-                data: ave_buf,
-            },
-            {
-                xaxis: 1, yaxis: 1,
-                label: "current height",
-                data: cur_buf,
-            },
-            {
-                xaxis: 1, yaxis: 1,
-                label: "kf position",
-                data: pos_buf,
-            },
-            {
-                xaxis: 1, yaxis: 2,
-                label: "kf velocity",
-                data: vel_buf,
-            },
-            {
-                xaxis: 1, yaxis: 2,
-                label: "kf acceleration",
-                data: acc_buf,
-            },
-        ];
+        var data = [];
+        choiceContainer.find("input:checked").each(function () {
+            var key = $(this).attr("name");
+            if (key && datasets[key]) {
+                data.push(datasets[key]);
+            }
+        });
         return data;
     }
 
