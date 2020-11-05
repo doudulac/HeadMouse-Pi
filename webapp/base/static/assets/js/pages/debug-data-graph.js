@@ -6,6 +6,10 @@ var runScript = function() {
     var pos_buf = [];
     var vel_buf = [];
     var acc_buf = [];
+    var fcx_buf = [];
+    var fcy_buf = [];
+    var dif_buf = [];
+    var up_buf = [];
     var updateInterval = 30;   // ms
     var realtime       = 'on'; //If == to on then fetch data every x seconds. else stop fetching
 
@@ -35,7 +39,33 @@ var runScript = function() {
             label: "kf acceleration",
             data: acc_buf,
         },
+        "face xangle": {
+            xaxis: 1, yaxis: 1,
+            label: "face xangle",
+            data: fcx_buf,
+        },
+        "face yangle": {
+            xaxis: 1, yaxis: 1,
+            label: "face yangle",
+            data: fcy_buf,
+        },
+        "height delta": {
+            xaxis: 1, yaxis: 1,
+            label: "height delta",
+            data: dif_buf,
+        },
+        "raised": {
+            xaxis: 1, yaxis: 1,
+            label: "raised",
+            data: up_buf,
+        },
+
     };
+
+    var now = (new Date()).getTime();
+    $.each(datasets, function(key, val) {
+        initData(now, val.data);
+    });
 
     var i = 0;
     $.each(datasets, function(key, val) {
@@ -108,10 +138,6 @@ var runScript = function() {
         }
     }
 
-    var now = (new Date()).getTime();
-    initData(now, ave_buf);
-    initData(now, cur_buf);
-
     //INITIALIZE REALTIME DATA FETCHING
     if (realtime === 'on') {
         update();
@@ -129,10 +155,22 @@ var runScript = function() {
 
     socket.on('eyebrows', function(data) {
         var now = (new Date()).getTime();
-        if (ave_buf.push([now, data[0]]) > maxbuf) { ave_buf.shift(); }
-        if (cur_buf.push([now, data[1]]) > maxbuf) { cur_buf.shift(); }
-        if (pos_buf.push([now, data[2]]) > maxbuf) { pos_buf.shift(); }
-        if (vel_buf.push([now, data[3]]) > maxbuf) { vel_buf.shift(); }
-        if (acc_buf.push([now, data[4]]) > maxbuf) { acc_buf.shift(); }
+        var i = 0;
+        $.each(datasets, function(key, val) {
+            if (key === 'raised') {
+                var v = 0;
+                if (data[i] === 'up ') {
+                    v = 5;
+                }
+                else if (data[i] === 'up+') {
+                    v = 10
+                }
+                if (val.data.push([now, v]) > maxbuf) { val.data.shift(); }
+            }
+            else {
+                if (val.data.push([now, data[i]]) > maxbuf) { val.data.shift(); }
+            }
+            ++i;
+        });
     });
 };
