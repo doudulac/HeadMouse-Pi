@@ -1684,6 +1684,7 @@ def start_face_detect_procs(detector, predictor):
 
     if wd > 0:
         msg = "RELOADING=1" if restart else "STOPPING=1"
+        msg += "\nEXTEND_TIMEOUT_USEC=4000000\n"
         daemon.notify(msg)
 
     if _args_.verbose > 0:
@@ -1761,6 +1762,7 @@ def main():
     global restart
     global _args_
     global _parser_
+    ret = 0
 
     _args_, _parser_ = parse_arguments()
 
@@ -1832,11 +1834,21 @@ def main():
             yappi.get_func_stats(ctx_id=thread.id).print_all()
 
     if restart:
+        wd = int(os.getenv('WATCHDOG_USEC', 0))
         if _args_.verbose > 0:
-            log.info("Auto restarting...\n")
-        os.execv(__file__, sys.argv)
+            msg = "Auto restarting..."
+            if wd > 0:
+                # let systemd restart us
+                msg += "(systemd)"
+                ret = 1
 
-    return 0
+            msg += "\n"
+            log.info(msg)
+
+        if wd == 0:
+            os.execv(__file__, sys.argv)
+
+    return ret
 
 
 if __name__ == '__main__':

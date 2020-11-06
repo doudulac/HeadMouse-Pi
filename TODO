@@ -6,4 +6,3 @@ TODO smile gesture for wheel
 TODO unlink gestures from actions
 TODO adjust sensitivity based on head size/ratio
 TODO config file for persistent preferences
-TODO keep systemd from restarting during auto-restart
