@@ -801,6 +801,15 @@ class MousePointer(object):
             self._fd.close()
             self._fd = None
 
+    def pause(self, state=None):
+        if state is not None:
+            self._paused = bool(state)
+        else:
+            self._paused = not self._paused
+        self.face.brows.reset()
+        if _args_.verbose > 0:
+            log.info('{}pause'.format('' if self.paused else 'un'))
+
     def process_movement(self):
         nose = self.face.nose
         dx = nose.dx
@@ -919,10 +928,7 @@ class MousePointer(object):
         elif btn['s'] < 0:
             if btn['f'].button_up():
                 btn['s'] = 0
-                self._paused = not self._paused
-                self.face.brows.reset()
-                if _args_.verbose > 0:
-                    log.info('{}pause'.format('' if self.paused else 'un'))
+                self.pause()
 
         if btn['s'] == 0 and btn['f'].button_down():
             btn['s'] = int(round(_fps_.fps() * 1.5))
@@ -1268,6 +1274,8 @@ def face_detect(demoq, detector, predictor):
 
     face = Face(fps=framerate, webserver=ws)
     mouse = MousePointer(face=face, webserver=ws)
+    ws.app.jinja_env.globals['face'] = face
+    ws.app.jinja_env.globals['mouse'] = mouse
 
     wd = int(int(os.getenv('WATCHDOG_USEC', 0)) / 1000000)
     if wd > 0:
@@ -1592,6 +1600,8 @@ def start_face_detect_procs(detector, predictor):
 
     face = Face(fps=framerate, webserver=ws)
     mouse = MousePointer(face=face, webserver=ws)
+    ws.app.jinja_env.globals['face'] = face
+    ws.app.jinja_env.globals['mouse'] = mouse
 
     wd = int(int(os.getenv('WATCHDOG_USEC', 0)) / 1000000)
     if wd > 0:

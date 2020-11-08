@@ -41,6 +41,13 @@ def preferences():
         return render_template('preferences.html', form=form)
 
 
+@blueprint.route('/pause')
+def pause():
+    mouse = current_app.jinja_env.globals['mouse']
+    mouse.pause()
+    return redirect(request.referrer)
+
+
 @blueprint.route('/shutdown')
 def shutdown():
     func = request.environ.get('werkzeug.server.shutdown')
