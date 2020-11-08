@@ -1672,7 +1672,7 @@ def start_face_detect_procs(detector, predictor):
 
             ws.put_image(frame)
 
-            if not _args_.onraspi:
+            if not _args_.onraspi and frame is not None:
                 cv2.imshow("Demo", frame)
 
                 if cv2.waitKey(1) == 27:
