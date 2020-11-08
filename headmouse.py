@@ -527,6 +527,10 @@ class Eyebrows(object):
         #         self.vup = False
         #         self.kvelmax = 0
 
+        ebd -= .35 * abs(self.face.x_angle)
+        if self.face.y_angle < 0:
+            ebd -= .2 * abs(self.face.y_angle)
+
         _n = 6
         _s = -2
         if self._ebds is None:
@@ -540,16 +544,14 @@ class Eyebrows(object):
         self._ave_height = sum(self._ebds[:_s]) / len(self._ebds[:_s])
         _d = self._cur_height - self._ave_height
         f_a = maxangle > self.face.x_angle > -maxangle and maxangle > self.face.y_angle > -maxangle
-        h_y = self._cur_height >= 18
+        h_y = self._cur_height >= 17
 
-        d_angle = self.face.y_angle - self.face.y_ave_angle
         if _args_.stickyclick:
-            raised = f_a and h_y and _d >= _args_.ebd and d_angle < 2.0
+            raised = f_a and h_y and _d >= _args_.ebd
             if not self._raised:
                 self._raised = raised
             else:
-                d_angle = self.face.y_ave_angle - self.face.y_angle
-                lowered = f_a and -_d >= _args_.ebd * .60 and d_angle < 2.0
+                lowered = f_a and -_d >= _args_.ebd * .60
                 if not self._sticky_raised or self._raised_count > 0:
                     self._raised = not lowered
                 elif raised:
@@ -564,7 +566,7 @@ class Eyebrows(object):
                 self._raised_count = 0
 
         else:
-            self._raised = f_a and h_y and _d > _args_.ebd and d_angle < 2.0
+            self._raised = f_a and h_y and _d > _args_.ebd
 
         updown = "up" if self._raised else "  "
         updown += '+' if self._sticky_raised else ' '
