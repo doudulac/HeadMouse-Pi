@@ -41,6 +41,14 @@ def preferences():
         return render_template('preferences.html', form=form)
 
 
+@blueprint.route('/debug-data-graph', methods=['GET', 'POST'])
+def debug_data_graph():
+    face = current_app.jinja_env.globals['face']
+    return render_template('debug-data-graph.html',
+                           nskfQ=face.nose.kfQ,
+                           nskfR=face.nose.kfR)
+
+
 @blueprint.route('/pause')
 def pause():
     mouse = current_app.jinja_env.globals['mouse']

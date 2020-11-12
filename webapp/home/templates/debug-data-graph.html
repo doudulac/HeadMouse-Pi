@@ -1,6 +1,6 @@
 {% extends "layouts/base.html" %}
 
-{% block title %} Flot Charts {% endblock %}
+{% block title %} Debug Data {% endblock %}
 
 <!-- Element injected in the BODY element -->
 {% block body_class %} sidebar-mini layout-fixed {% endblock body_class %}
@@ -19,6 +19,12 @@
     .grid-container {
       display: grid;
       grid-template-columns: auto 130px;
+      padding: 10px;
+    }
+
+    .chart-opts-grid {
+      display: grid;
+      grid-template-columns: auto 100px 100px auto;
       padding: 10px;
     }
 
@@ -68,26 +74,86 @@
 
                   <div class="card-tools">
                     Real time
-                    <div class="btn-group" id="realtime" data-toggle="btn-toggle">
-                      <button type="button" class="btn btn-default btn-sm active" data-toggle="on">On</button>
-                      <button type="button" class="btn btn-default btn-sm" data-toggle="off">Off</button>
+                    <div class="btn-group" id="realtime-brow" data-toggle="btn-toggle">
+                      <button type="button" class="btn btn-primary btn-sm" data-toggle="on">On</button>
+                      <button type="button" class="btn btn-primary btn-sm" data-toggle="off">Off</button>
                     </div>
+                    <button type="button" class="btn btn-tool" data-card-widget="collapse">
+                        <i class="fas fa-minus"></i></button>
                   </div>
+                  <div class="card-tools">
+                </div>
                 </div>
                 <div class="card-body">
                   <div class="grid-container">
-                    <div id="eyebrow" style="height: 300px;"></div>
-                    <div id="choices"></div>
+                    <div id="brow-chart" style="height: 300px;"></div>
+                    <div id="brow-series"></div>
                   </div>
                 </div>
                 <!-- /.card-body-->
               </div>
               <!-- /.card -->
-
             </div>
             <!-- /.col -->
           </div>
           <!-- /.row -->
+
+          <div class="row">
+            <div class="col-12">
+              <!-- interactive chart -->
+              <div class="card card-primary card-outline">
+                <div class="card-header">
+                  <h3 class="card-title">
+                    <i class="far fa-chart-bar"></i>
+                    Nose
+                  </h3>
+
+                  <div class="card-tools">
+                    Real time
+                    <div class="btn-group" id="realtime-nose" data-toggle="btn-toggle">
+                      <button type="button" class="btn btn-primary btn-sm" data-toggle="on">On</button>
+                      <button type="button" class="btn btn-primary btn-sm" data-toggle="off">Off</button>
+                    </div>
+                    <button type="button" class="btn btn-tool" data-card-widget="collapse">
+                        <i class="fas fa-minus"></i></button>
+                  </div>
+                  <div class="card-tools">
+                </div>
+                </div>
+                <div class="card-body">
+                  <div class="grid-container">
+                    <div class="chart-opts-grid">
+                      <div></div>
+                      <div class="input-group input-group-sm">
+                        <label for="ns-kf-q">kf.Q</label>
+                        <input type="text" class="form-control" id="ns-kf-q" value="{{ nskfQ }}">
+                        <span class="input-group-append">
+                          <button type="button" class="btn btn-info btn-flat" id="ns-kf-q-btn">
+                            <i class="far fa-check-square"></i></button>
+                        </span>
+                      </div>
+                      <div class="input-group input-group-sm">
+                        <label for="ns-kf-r">kf.R</label>
+                        <input type="text" class="form-control" id="ns-kf-r" value="{{ nskfR }}">
+                        <span class="input-group-append">
+                          <button type="button" class="btn btn-info btn-flat" id="ns-kf-r-btn">
+                            <i class="far fa-check-square"></i></button>
+                        </span>
+                      </div>
+                    </div>
+                    <div></div>
+                    <div id="nose-chart" style="height: 300px;"></div>
+                    <div id="nose-series"></div>
+                  </div>
+                </div>
+                <!-- /.card-body-->
+              </div>
+              <!-- /.card -->
+            </div>
+            <!-- /.col -->
+          </div>
+          <!-- /.row -->
+
         </div><!-- /.container-fluid -->
       </section>
 

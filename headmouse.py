@@ -491,11 +491,14 @@ class Eyebrows(object):
         self.vup = False
         self.kvelmax = 0
         self._ws = webserver
+        self.send_debug_data = False
 
     def update(self):
         shapes = self.face.shapes
         framenum = self.face.framenum
         if shapes is None:
+            if self.send_debug_data:
+                self._ws.socketio.emit('brow_data', [0, 0, 0, 0, 0, 0, 0, 0, '   ', ' '])
             return
 
         # jaw 0,16
@@ -527,7 +530,7 @@ class Eyebrows(object):
         #         self.vup = False
         #         self.kvelmax = 0
 
-        ebd -= .35 * abs(self.face.x_angle)
+        ebd -= .30 * abs(self.face.x_angle)
         if self.face.y_angle < 0:
             ebd -= .2 * abs(self.face.y_angle)
 
@@ -575,8 +578,9 @@ class Eyebrows(object):
             line = "brows {:.02f}/{:.02f} x[{:.02f}] v[{:6.02f}] a[{:7.02f}] f[{:5.02f}/{:5.02f}] d[{:5.02f}] {} {}"
             log.info(line.format(self._ave_height, self._cur_height, kpos, kvel, kacc,
                                  self.face.x_angle, self.face.y_angle, _d, updown, vup))
-        self._ws.socketio.emit('eyebrows', [self._ave_height, self._cur_height, kpos, kvel, kacc,
-                                            self.face.x_angle, self.face.y_angle, _d, updown, vup])
+        if self.send_debug_data:
+            self._ws.socketio.emit('brow_data', [self._ave_height, self._cur_height, kpos, kvel, kacc,
+                                                 self.face.x_angle, self.face.y_angle, _d, updown, vup])
 
     def reset(self):
         self._raised = False
@@ -605,6 +609,7 @@ class Eyebrows(object):
 class Eyes(object):
     def __init__(self, face, fps=None, webserver=None):
         self.face = face
+        self._ws = webserver
         self._open = False
         if fps is None:
             fps = 20
@@ -660,17 +665,24 @@ class Eyes(object):
 class Nose(object):
     def __init__(self, face, fps=None, webserver=None):
         self.face = face
+        self._ws = webserver
         self._positions = None
         self.nose_raw = [0, 0]
         self._dx = None
         self._dy = None
-        self._vels = None
+        self._vx = None
+        self._vy = None
         self._ax = None
         self._ay = None
         if fps is None:
             fps = 20
         dt = 1.0 / fps
-        self._kf = kalmanfilter_dim4_init(dt=dt, Q=10 ** 2, R=.05)
+        self._fps = fps
+        self._dt = dt
+        self._kfQ = 1.0
+        self._kfR = .05
+        self._kf = kalmanfilter_dim6_init(dt=dt, Q=self._kfQ ** 2, R=self._kfR)
+        self.send_debug_data = False
 
     def update(self):
         # jaw 0,16
@@ -683,57 +695,89 @@ class Nose(object):
         # moutho 48,59
         # mouthi 60,67
         shapes = self.face.shapes
-        if shapes is not None:
+        if shapes is None:
+            # force 0 delta position
+            kpos = self._positions[1] if self._positions is not None else [0, 0]
+            kvel = [0, 0]
+            kacc = [0, 0]
+        else:
             self.nose_raw = shapes[30]
-            kfu = self.nose_raw
-        else:
-            # Let self.nose_raw from last time persist, making dx = 0 if no filter
-            kfu = None
 
-        if not _args_.filter:
-            nose = self.nose_raw
-            vel = [0, 0]
-        else:
             self._kf.predict()
-            self._kf.update(kfu)
-            nose = [int(round(self._kf.x[0][0])), int(round(self._kf.x[2][0]))]
-            vel = [self._kf.x[1][0], self._kf.x[3][0]]
+            self._kf.update(self.nose_raw)
+            kpos = [int(round(self._kf.x[0][0])), int(round(self._kf.x[3][0]))]
+            kvel = [self._kf.x[1][0], self._kf.x[4][0]]
+            kacc = [self._kf.x[2][0], self._kf.x[5][0]]
+
+        nose = kpos if _args_.filter else self.nose_raw
 
         if self._positions is None:
             self._positions = [nose, nose]
-            self._vels = [vel, vel]
         else:
             self._positions.append(self._positions.pop(0))
             self._positions[-1] = nose
-            self._vels.append(self._vels.pop(0))
-            self._vels[-1] = vel
 
         self._dx = self.position[0] - self.prev_position[0]
         self._dy = self.position[1] - self.prev_position[1]
-        self._ax = self.vel[0] - self.prev_vel[0]
-        self._ay = self.vel[1] - self.prev_vel[1]
+        self._vx = kvel[0]
+        self._vy = kvel[1]
+        self._ax = kacc[0]
+        self._ay = kacc[1]
 
         if _args_.debug_nose:
             line = "nose ({:7.03f}, {:7.03f}) ({:8.03f}, {:8.03f}) ({:8.03f}, {:8.03f}) "
             line += "({:7.03f}, {:6.02f}) ({:7.03f}, {:6.02f})"
-            log.info(line.format(self.nose_raw[0], self.nose_raw[1], self.position[0], self.vel[0],
-                                 self.position[1], self.vel[1], self.dx, self.ax, self.dy, self.ay))
+            log.info(line.format(self.nose_raw[0], self.nose_raw[1], kpos[0], self.vx,
+                                 kpos[1], self.vy, self.dx, self.ax, self.dy, self.ay))
+
+        if self.send_debug_data:
+            self._ws.socketio.emit('nose_data', [int(self.nose_raw[0]), int(self.nose_raw[1]), int(kpos[0]),
+                                                 self.vx, int(kpos[1]), self.vy,
+                                                 self.dx, self.ax, self.dy, self.ay])
+
+    @property
+    def kfQ(self):
+        return self._kfQ
+
+    @kfQ.setter
+    def kfQ(self, value):
+        self._kfQ = float(value)
+        q = Q_discrete_white_noise(dim=self._kf.dim_x/self._kf.dim_z, dt=self._dt, var=self._kfQ ** 2)
+        self._kf.Q = block_diag(q, q)
+
+    @property
+    def kfR(self):
+        return self._kfR
+
+    @kfR.setter
+    def kfR(self, value):
+        self._kfR = float(value)
+        self._kf.R = np.array([[self._kfR, 0.],
+                               [0., self._kfR]])
 
     @property
     def ax(self):
-        return self._ax
+        return int(self._ax)
 
     @property
     def ay(self):
-        return self._ay
+        return int(self._ay)
+
+    @property
+    def vx(self):
+        return int(self._vx)
+
+    @property
+    def vy(self):
+        return int(self._vy)
 
     @property
     def dx(self):
-        return self._dx
+        return int(self._dx)
 
     @property
     def dy(self):
-        return self._dy
+        return int(self._dy)
 
     @property
     def prev_position(self):
@@ -743,18 +787,11 @@ class Nose(object):
     def position(self):
         return self._positions[1]
 
-    @property
-    def prev_vel(self):
-        return self._vels[0]
-
-    @property
-    def vel(self):
-        return self._vels[1]
-
 
 class MousePointer(object):
     def __init__(self, face, mindeltathresh=None, webserver=None):
         self.face = face
+        self._ws = webserver
         self._fd = None
         self.open_hidg()
         self._dx = None
@@ -1080,6 +1117,8 @@ class WebServer(object):
         self.queue = eventlet.queue.Queue()
         self.last_access = 0
         self.app.add_url_rule('/video_feed', 'video_feed', self.video_feed)
+        self.socketio.on_event("ns_kf_update", self.nskfupdate)
+        self.socketio.on_event("toggle_debug_data", self.toggledebugdata)
 
     def start(self):
         self.thread = self.socketio.start_background_task(self.socketio.run, self.app, host='0.0.0.0', port=8000,
@@ -1110,6 +1149,20 @@ class WebServer(object):
     # @app.route('/video_feed')
     def video_feed(self):
         return Response(self.get_image(), mimetype='multipart/x-mixed-replace; boundary=frame')
+
+    # @socketio.on('ns_kf_update')
+    def nskfupdate(self, values):
+        face = self.app.jinja_env.globals['face']
+        face.nose.kfQ = values['Q']
+        face.nose.kfR = values['R']
+
+    # @socketio.on('toggle_debug_data')
+    def toggledebugdata(self, data):
+        face = self.app.jinja_env.globals['face']
+        if 'brows' in data.keys():
+            face.brows.send_debug_data = data['brows']
+        if 'nose' in data.keys():
+            face.nose.send_debug_data = data['nose']
 
 
 class MyArgumentParser(ArgumentParser):
@@ -1397,6 +1450,31 @@ def feature_center(shapes):
     return centx, centy
 
 
+def kalmanfilter_dim6_init(dt=1 / 20, Q=2.0, R=2.0):
+    f = KalmanFilter(dim_x=6, dim_z=2)
+    # State Transition matrix
+    f.F = np.array([[1., dt, .5 * dt**2, 0., 0., 0.],
+                    [0., 1., dt, 0., 0., 0.],
+                    [0., 0., 1., 0., 0., 0.],
+                    [0., 0., 0., 1., dt, .5 * dt**2],
+                    [0., 0., 0., 0., 1., dt],
+                    [0., 0., 0., 0., 0., 1.]])
+    # Process noise matrix
+    q = Q_discrete_white_noise(dim=3, dt=dt, var=Q)
+    f.Q = block_diag(q, q)
+    # Measurement function
+    f.H = np.array([[1., 0., 0., 0., 0., 0.],
+                    [0., 0., 0., 1., 0., 0.]])
+    # Measurement noise matrix
+    f.R = np.array([[R, 0.],
+                    [0., R]])
+    # Current state estimate
+    f.x = np.array([[0., 0., 0., 0., 0., 0.]]).T
+    # Current state covariance matrix
+    f.P = np.eye(6) * 1000.
+    return f
+
+
 def kalmanfilter_dim4_init(dt=1 / 20, Q=2.0, R=2.0):
     f = KalmanFilter(dim_x=4, dim_z=2)
     # State Transition matrix
@@ -1462,7 +1540,7 @@ def parse_arguments():
     parser = MyArgumentParser(formatter_class=ArgumentDefaultsHelpFormatter)
     parser.add_argument("-c", "--camera-mode", default=2, type=int, choices=range(1, 5),
                         help="camera mode 1:320x240@30 2:640x480@30 3:800x600@15 4:1024x768@10")
-    parser.add_argument("-e", "--ebd", default=2.0, type=float,
+    parser.add_argument("-e", "--ebd", default=2.5, type=float,
                         help="Eyebrow distance for click")
     parser.add_argument("-f", "--filter", action="store_true",
                         help="enable filter")

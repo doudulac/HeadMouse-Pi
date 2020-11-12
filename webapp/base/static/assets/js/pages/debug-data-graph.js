@@ -11,9 +11,21 @@ var runScript = function() {
     var dif_buf = [];
     var up_buf = [];
     var updateInterval = 30;   // ms
-    var realtime       = 'on'; //If == to on then fetch data every x seconds. else stop fetching
+    var realtime_brow       = 'off'; //If == to on then fetch data every x seconds. else stop fetching
 
-    var datasets = {
+    var xraw_buf = [];
+    var yraw_buf = [];
+    var xpos_buf = [];
+    var xvel_buf = [];
+    var ypos_buf = [];
+    var yvel_buf = [];
+    var xdelt_buf = [];
+    var xacc_buf = [];
+    var ydelt_buf = [];
+    var yacc_buf = [];
+    var realtime_nose       = 'off'; //If == to on then fetch data every x seconds. else stop fetching
+
+    var brow_dataset = {
         "average height": {
             xaxis: 1, yaxis: 1,
             label: "average height",
@@ -50,7 +62,7 @@ var runScript = function() {
             data: fcy_buf,
         },
         "height delta": {
-            xaxis: 1, yaxis: 1,
+            xaxis: 1, yaxis: 2,
             label: "height delta",
             data: dif_buf,
         },
@@ -62,27 +74,88 @@ var runScript = function() {
 
     };
 
-    var now = (new Date()).getTime();
-    $.each(datasets, function(key, val) {
-        initData(now, val.data);
-    });
+    var nose_dataset = {
+        "x raw": {
+            xaxis: 1, yaxis: 1,
+            label: "x raw",
+            lines: { fill: false },
+            data: xraw_buf,
+        },
+        "y raw": {
+            xaxis: 1, yaxis: 1,
+            label: "y raw",
+            lines: { fill: false },
+            data: yraw_buf,
+        },
+        "x pos": {
+            xaxis: 1, yaxis: 1,
+            label: "x pos",
+            lines: { fill: false },
+            data: xpos_buf,
+        },
+        "x vel": {
+            xaxis: 1, yaxis: 2,
+            label: "x vel",
+            data: xvel_buf,
+        },
+        "y pos": {
+            xaxis: 1, yaxis: 1,
+            label: "y pos",
+            lines: { fill: false },
+            data: ypos_buf,
+        },
+        "y vel": {
+            xaxis: 1, yaxis: 2,
+            label: "y vel",
+            data: yvel_buf,
+        },
+        "x delta": {
+            xaxis: 1, yaxis: 2,
+            label: "x delta",
+            data: xdelt_buf,
+        },
+        "x acc": {
+            xaxis: 1, yaxis: 2,
+            label: "x acc",
+            data: xacc_buf,
+        },
+        "y delta": {
+            xaxis: 1, yaxis: 2,
+            label: "y delta",
+            data: ydelt_buf,
+        },
+        "y acc": {
+            xaxis: 1, yaxis: 2,
+            label: "y acc",
+            data: yacc_buf,
+        },
+    };
 
+    var browSeriesContainer = $("#brow-series");
+    var noseSeriesContainer = $("#nose-series");
+    var now = (new Date()).getTime();
     var i = 0;
-    $.each(datasets, function(key, val) {
+    $.each(brow_dataset, function(key, val) {
+        initData(now, val.data);
         val.color = i;
         ++i;
+        browSeriesContainer.append("<br/><input type='checkbox' name='" + key +
+            "' checked='checked' id='id" + key + "'></input>" +
+            "&nbsp;<label for='id" + key + "'>"
+            + val.label + "</label>");
     });
-
-    // insert checkboxes
-    var choiceContainer = $("#choices");
-    $.each(datasets, function(key, val) {
-        choiceContainer.append("<br/><input type='checkbox' name='" + key +
+    i = 0;
+    $.each(nose_dataset, function(key, val) {
+        initData(now, val.data);
+        val.color = i;
+        ++i;
+        noseSeriesContainer.append("<br/><input type='checkbox' name='" + key +
             "' checked='checked' id='id" + key + "'></input>" +
             "&nbsp;<label for='id" + key + "'>"
             + val.label + "</label>");
     });
 
-    var eyebrow_plot = $.plot('#eyebrow', getData(),
+    var brow_plot = $.plot('#brow-chart', getBrowData(),
     {
         legend: {
             show: true,
@@ -111,24 +184,74 @@ var runScript = function() {
         }],
     });
 
-    function getData() {
+    var nose_plot = $.plot('#nose-chart', getNoseData(),
+    {
+        legend: {
+            show: true,
+            position: "sw",
+        },
+        grid: {
+            borderColor: '#f3f3f3',
+            borderWidth: 1,
+            tickColor: '#f3f3f3',
+        },
+        series: {
+            color: '#3c8dbc',
+            lines: {
+                lineWidth: 2,
+                show: true,
+                fill: true,
+            },
+        },
+        yaxes: [{min: 0, max: 50,}, {position: "right"}],
+        xaxes: [{
+            mode: "time",
+            timeBase: "milliseconds",
+            timeformat: "%I:%M:%S",
+            timezone: "browser",
+            show: true,
+        }],
+    });
+
+    function getBrowData() {
         var data = [];
-        choiceContainer.find("input:checked").each(function () {
+        browSeriesContainer.find("input:checked").each(function () {
             var key = $(this).attr("name");
-            if (key && datasets[key]) {
-                data.push(datasets[key]);
+            if (key && brow_dataset[key]) {
+                data.push(brow_dataset[key]);
             }
         });
         return data;
     }
 
-    function update() {
-        eyebrow_plot.setData(getData());
-        eyebrow_plot.setupGrid(true);
-        eyebrow_plot.draw();
+    function getNoseData() {
+        var data = [];
+        noseSeriesContainer.find("input:checked").each(function () {
+            var key = $(this).attr("name");
+            if (key && nose_dataset[key]) {
+                data.push(nose_dataset[key]);
+            }
+        });
+        return data;
+    }
 
-        if (realtime === 'on') {
-          setTimeout(update, 30);
+    function update_brow() {
+        brow_plot.setData(getBrowData());
+        brow_plot.setupGrid(true);
+        brow_plot.draw();
+
+        if (realtime_brow === 'on') {
+          setTimeout(update_brow, updateInterval);
+        }
+    }
+
+    function update_nose() {
+        nose_plot.setData(getNoseData());
+        nose_plot.setupGrid(true);
+        nose_plot.draw();
+
+        if (realtime_nose === 'on') {
+          setTimeout(update_nose, updateInterval);
         }
     }
 
@@ -139,37 +262,78 @@ var runScript = function() {
     }
 
     //INITIALIZE REALTIME DATA FETCHING
-    if (realtime === 'on') {
-        update();
+    if (realtime_brow === 'on') {
+        update_brow();
+    }
+    if (realtime_nose === 'on') {
+        update_nose();
     }
     //REALTIME TOGGLE
-    $('#realtime .btn').click(function () {
+    $('#realtime-brow .btn').click(function () {
         if ($(this).data('toggle') === 'on') {
-            realtime = 'on';
+            realtime_brow = 'on';
+            var now = (new Date()).getTime();
+            $.each(brow_dataset, function(key, val) {
+                initData(now, val.data);
+            });
+            socket.emit('toggle_debug_data', { brows: true });
         }
         else {
-            realtime = 'off';
+            realtime_brow = 'off';
+            socket.emit('toggle_debug_data', { brows: false });
         }
-        update();
+        update_brow();
+    });
+    $('#realtime-nose .btn').click(function () {
+        if ($(this).data('toggle') === 'on') {
+            realtime_nose = 'on';
+            var now = (new Date()).getTime();
+            $.each(nose_dataset, function(key, val) {
+                initData(now, val.data);
+            });
+            socket.emit('toggle_debug_data', { nose: true });
+        }
+        else {
+            realtime_nose = 'off';
+            socket.emit('toggle_debug_data', { nose: false });
+        }
+        update_nose();
     });
 
-    socket.on('eyebrows', function(data) {
+    $('#ns-kf-q-btn').click(function () {
+        socket.emit('ns_kf_update', { Q: $('#ns-kf-q').val(), R: $('#ns-kf-r').val() });
+    });
+
+    $('#ns-kf-r-btn').click(function () {
+        socket.emit('ns_kf_update', { Q: $('#ns-kf-q').val(), R: $('#ns-kf-r').val() });
+    });
+
+    socket.on('brow_data', function(data) {
         var now = (new Date()).getTime();
         var i = 0;
-        $.each(datasets, function(key, val) {
+        $.each(brow_dataset, function(key, val) {
             if (key === 'raised') {
                 var v = 0;
                 if (data[i] === 'up ') {
                     v = 5;
                 }
                 else if (data[i] === 'up+') {
-                    v = 10
+                    v = 10;
                 }
                 if (val.data.push([now, v]) > maxbuf) { val.data.shift(); }
             }
             else {
                 if (val.data.push([now, data[i]]) > maxbuf) { val.data.shift(); }
             }
+            ++i;
+        });
+    });
+
+    socket.on('nose_data', function(data) {
+        var now = (new Date()).getTime();
+        var i = 0;
+        $.each(nose_dataset, function(key, val) {
+            if (val.data.push([now, data[i]]) > maxbuf) { val.data.shift(); }
             ++i;
         });
     });
