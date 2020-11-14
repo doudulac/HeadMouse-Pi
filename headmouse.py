@@ -488,19 +488,10 @@ class Eyebrows(object):
         self._raised_count = 0
         self._sticky_raised = False
         self.kf = MyKalmanFilter(dim_x=3, dim_z=1, dt=1 / 30, Q=25.0, R=.5)
-        self.vup = False
-        self.kvelmax = 0
         self._ws = webserver
         self.send_debug_data = False
 
     def update(self):
-        shapes = self.face.shapes
-        framenum = self.face.framenum
-        if shapes is None:
-            if self.send_debug_data:
-                self._ws.socketio.emit('brow_data', [0, 0, 0, 0, 0, 0, 0, 0, '   ', ' '])
-            return
-
         # jaw 0,16
         # rbrow 17,21
         # lbrow 22,26
@@ -510,32 +501,28 @@ class Eyebrows(object):
         # leye 42,47
         # moutho 48,59
         # mouthi 60,67
-
-        ebc = feature_center([shapes[19], shapes[24]])
-        ebd = point_distance(ebc, shapes[27])
-
-        self.kf.predict()
-        self.kf.update(ebd)
-        kpos = self.kf.x[0][0]
-        kvel = self.kf.x[1][0]
-        kacc = self.kf.x[2][0]
-        # if not self.vup:
-        #     if kvel >= 5:
-        #         self.vup = True
-        #         self.kvelmax = kvel
-        # else:
-        #     if kvel >= self.kvelmax:
-        #         self.kvelmax = kvel
-        #     else:
-        #         self.vup = False
-        #         self.kvelmax = 0
-
-        ebd -= .30 * abs(self.face.x_angle)
-        if self.face.y_angle < 0:
-            ebd -= .2 * abs(self.face.y_angle)
-
         _n = 6
         _s = -2
+        shapes = self.face.shapes
+        if shapes is None:
+            ebd = self._ebds[-1] if self._ebds is not None else 0
+            kpos = 0
+            kvel = 0
+            kacc = 0
+        else:
+            ebc = feature_center([shapes[19], shapes[24]])
+            ebd = point_distance(ebc, shapes[27])
+
+            self.kf.predict()
+            self.kf.update(ebd)
+            kpos = self.kf.x[0][0]
+            kvel = self.kf.x[1][0]
+            kacc = self.kf.x[2][0]
+
+            ebd -= .30 * abs(self.face.x_angle)
+            if self.face.y_angle < 0:
+                ebd -= .2 * abs(self.face.y_angle)
+
         if self._ebds is None:
             self._ebds = [ebd, ] * _n
         else:
@@ -573,14 +560,13 @@ class Eyebrows(object):
 
         updown = "up" if self._raised else "  "
         updown += '+' if self._sticky_raised else ' '
-        vup = '^' if self.vup else ' '
         if _args_.debug_brows:
-            line = "brows {:.02f}/{:.02f} x[{:.02f}] v[{:6.02f}] a[{:7.02f}] f[{:5.02f}/{:5.02f}] d[{:5.02f}] {} {}"
+            line = "brows {:.02f}/{:.02f} x[{:.02f}] v[{:6.02f}] a[{:7.02f}] f[{:5.02f}/{:5.02f}] d[{:5.02f}] {}"
             log.info(line.format(self._ave_height, self._cur_height, kpos, kvel, kacc,
-                                 self.face.x_angle, self.face.y_angle, _d, updown, vup))
+                                 self.face.x_angle, self.face.y_angle, _d, updown))
         if self.send_debug_data:
             self._ws.socketio.emit('brow_data', [self._ave_height, self._cur_height, kpos, kvel, kacc,
-                                                 self.face.x_angle, self.face.y_angle, _d, updown, vup])
+                                                 self.face.x_angle, self.face.y_angle, _d, updown])
 
     def reset(self):
         self._raised = False
