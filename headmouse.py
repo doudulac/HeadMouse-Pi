@@ -1091,6 +1091,7 @@ class WebServer(object):
         self.app.add_url_rule('/video_feed', 'video_feed', self.video_feed)
         self.socketio.on_event("kf_update", self.kfupdate)
         self.socketio.on_event("toggle_debug_data", self.toggledebugdata)
+        self.socketio.on_event("disconnect", self.disconnect)
 
     def start(self):
         self.thread = self.socketio.start_background_task(self.socketio.run, self.app, host='0.0.0.0', port=8000,
@@ -1136,6 +1137,12 @@ class WebServer(object):
             face.brows.send_debug_data = data['brows']
         if 'nose' in data.keys():
             face.nose.send_debug_data = data['nose']
+
+    # @socketio.on('disconnect')
+    def disconnect(self):
+        face = self.app.jinja_env.globals['face']
+        face.brows.send_debug_data = False
+        face.nose.send_debug_data = False
 
 
 class MyArgumentParser(ArgumentParser):
