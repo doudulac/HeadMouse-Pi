@@ -296,11 +296,11 @@ var runScript = function() {
     });
 
     $('#ns-kf-q-btn').click(function () {
-        socket.emit('ns_kf_update', { Q: $('#ns-kf-q').val(), R: $('#ns-kf-r').val() });
+        socket.emit('kf_update', { nose: { Q: $('#ns-kf-q').val(), R: $('#ns-kf-r').val() } });
     });
 
     $('#ns-kf-r-btn').click(function () {
-        socket.emit('ns_kf_update', { Q: $('#ns-kf-q').val(), R: $('#ns-kf-r').val() });
+        socket.emit('kf_update', { nose: { Q: $('#ns-kf-q').val(), R: $('#ns-kf-r').val() } });
     });
 
     socket.on('brow_data', function(data) {

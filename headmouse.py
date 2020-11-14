@@ -487,7 +487,7 @@ class Eyebrows(object):
         self._raised = False
         self._raised_count = 0
         self._sticky_raised = False
-        self._kf = kalmanfilter_dim3_init(dt=1/30, Q=5.0 ** 2, R=.5)
+        self.kf = MyKalmanFilter(dim_x=3, dim_z=1, dt=1 / 30, Q=25.0, R=.5)
         self.vup = False
         self.kvelmax = 0
         self._ws = webserver
@@ -514,11 +514,11 @@ class Eyebrows(object):
         ebc = feature_center([shapes[19], shapes[24]])
         ebd = point_distance(ebc, shapes[27])
 
-        self._kf.predict()
-        self._kf.update(ebd)
-        kpos = self._kf.x[0][0]
-        kvel = self._kf.x[1][0]
-        kacc = self._kf.x[2][0]
+        self.kf.predict()
+        self.kf.update(ebd)
+        kpos = self.kf.x[0][0]
+        kvel = self.kf.x[1][0]
+        kacc = self.kf.x[2][0]
         # if not self.vup:
         #     if kvel >= 5:
         #         self.vup = True
@@ -611,10 +611,8 @@ class Eyes(object):
         self.face = face
         self._ws = webserver
         self._open = False
-        if fps is None:
-            fps = 20
-        dt = 1.0 / fps
-        self._kf = kalmanfilter_dim2_init(dt=dt, Q=1 ** 2, R=.05)
+        dt = None if fps is None else 1.0 / fps
+        self.kf = MyKalmanFilter(dim_x=2, dim_z=1, dt=dt, Q=1.0, R=.05)
         self._pupilary_dist = None
 
     def update(self):
@@ -635,16 +633,16 @@ class Eyes(object):
               (2.0 * point_distance(shapes[42], shapes[45]))
         ear = (red + led) / 2
 
-        self._kf.predict()
-        self._kf.update(ear)
-        if self._kf.x[0][0] < _args_.ear:
+        self.kf.predict()
+        self.kf.update(ear)
+        if self.kf.x[0][0] < _args_.ear:
             self._open = False
         else:
             self._open = True
 
         if _args_.debug_eyes:
             log.info("eyes {:5.02f} {:5.02f} {:6.03f} {}".format(
-                ear, self._kf.x[0][0], self._kf.x[1][0], "O" if self._open else "."
+                ear, self.kf.x[0][0], self.kf.x[1][0], "O" if self._open else "."
             ))
 
     @property
@@ -674,14 +672,8 @@ class Nose(object):
         self._vy = None
         self._ax = None
         self._ay = None
-        if fps is None:
-            fps = 20
-        dt = 1.0 / fps
-        self._fps = fps
-        self._dt = dt
-        self._kfQ = 1.0
-        self._kfR = .05
-        self._kf = kalmanfilter_dim6_init(dt=dt, Q=self._kfQ ** 2, R=self._kfR)
+        dt = None if fps is None else 1.0 / fps
+        self.kf = MyKalmanFilter(dim_x=6, dim_z=2, dt=dt, Q=1.0, R=.05)
         self.send_debug_data = False
 
     def update(self):
@@ -703,11 +695,11 @@ class Nose(object):
         else:
             self.nose_raw = shapes[30]
 
-            self._kf.predict()
-            self._kf.update(self.nose_raw)
-            kpos = [int(round(self._kf.x[0][0])), int(round(self._kf.x[3][0]))]
-            kvel = [self._kf.x[1][0], self._kf.x[4][0]]
-            kacc = [self._kf.x[2][0], self._kf.x[5][0]]
+            self.kf.predict()
+            self.kf.update(self.nose_raw)
+            kpos = [int(round(self.kf.x[0][0])), int(round(self.kf.x[3][0]))]
+            kvel = [self.kf.x[1][0], self.kf.x[4][0]]
+            kacc = [self.kf.x[2][0], self.kf.x[5][0]]
 
         nose = kpos if _args_.filter else self.nose_raw
 
@@ -734,26 +726,6 @@ class Nose(object):
             self._ws.socketio.emit('nose_data', [int(self.nose_raw[0]), int(self.nose_raw[1]), int(kpos[0]),
                                                  self.vx, int(kpos[1]), self.vy,
                                                  self.dx, self.ax, self.dy, self.ay])
-
-    @property
-    def kfQ(self):
-        return self._kfQ
-
-    @kfQ.setter
-    def kfQ(self, value):
-        self._kfQ = float(value)
-        q = Q_discrete_white_noise(dim=self._kf.dim_x/self._kf.dim_z, dt=self._dt, var=self._kfQ ** 2)
-        self._kf.Q = block_diag(q, q)
-
-    @property
-    def kfR(self):
-        return self._kfR
-
-    @kfR.setter
-    def kfR(self, value):
-        self._kfR = float(value)
-        self._kf.R = np.array([[self._kfR, 0.],
-                               [0., self._kfR]])
 
     @property
     def ax(self):
@@ -1117,7 +1089,7 @@ class WebServer(object):
         self.queue = eventlet.queue.Queue()
         self.last_access = 0
         self.app.add_url_rule('/video_feed', 'video_feed', self.video_feed)
-        self.socketio.on_event("ns_kf_update", self.nskfupdate)
+        self.socketio.on_event("kf_update", self.kfupdate)
         self.socketio.on_event("toggle_debug_data", self.toggledebugdata)
 
     def start(self):
@@ -1151,10 +1123,11 @@ class WebServer(object):
         return Response(self.get_image(), mimetype='multipart/x-mixed-replace; boundary=frame')
 
     # @socketio.on('ns_kf_update')
-    def nskfupdate(self, values):
+    def kfupdate(self, values):
         face = self.app.jinja_env.globals['face']
-        face.nose.kfQ = values['Q']
-        face.nose.kfR = values['R']
+        if 'nose' in values:
+            face.nose.kf.kfQ = values['nose']['Q']
+            face.nose.kf.kfR = values['nose']['R']
 
     # @socketio.on('toggle_debug_data')
     def toggledebugdata(self, data):
@@ -1169,6 +1142,143 @@ class MyArgumentParser(ArgumentParser):
     @property
     def actions(self):
         return self._actions
+
+
+class MyKalmanFilter(KalmanFilter):
+    def __init__(self, dim_x, dim_z, dim_u=0, dt=1 / 30, Q=1.0, R=1.0):
+        super(MyKalmanFilter, self).__init__(dim_x, dim_z, dim_u)
+        self.dt = dt
+        self._kfQ = Q
+        self._kfR = R
+
+        if dim_z == 1:
+            if dim_x == 2:
+                self._init_2x_1z()
+            elif dim_x == 3:
+                self._init_3x_1z()
+        elif dim_z == 2:
+            if dim_x == 4:
+                self._init_4x_2z()
+            elif dim_x == 6:
+                self._init_6x_2z()
+
+    def _init_6x_2z(self):
+        f = self
+        dt = self.dt
+        Q = self._kfQ
+        R = self._kfR
+        # State Transition matrix
+        f.F = np.array([[1., dt, .5 * dt**2, 0., 0., 0.],
+                        [0., 1., dt, 0., 0., 0.],
+                        [0., 0., 1., 0., 0., 0.],
+                        [0., 0., 0., 1., dt, .5 * dt**2],
+                        [0., 0., 0., 0., 1., dt],
+                        [0., 0., 0., 0., 0., 1.]])
+        # Process noise matrix
+        q = Q_discrete_white_noise(dim=3, dt=dt, var=Q)
+        f.Q = block_diag(q, q)
+        # Measurement function
+        f.H = np.array([[1., 0., 0., 0., 0., 0.],
+                        [0., 0., 0., 1., 0., 0.]])
+        # Measurement noise matrix
+        f.R = np.array([[R, 0.],
+                        [0., R]])
+        # Current state estimate
+        f.x = np.array([[0., 0., 0., 0., 0., 0.]]).T
+        # Current state covariance matrix
+        f.P = np.eye(6) * 1000.
+
+    def _init_4x_2z(self):
+        f = self
+        dt = self.dt
+        Q = self._kfQ
+        R = self._kfR
+        # State Transition matrix
+        f.F = np.array([[1., dt, 0., 0.],
+                        [0., 1., 0., 0.],
+                        [0., 0., 1., dt],
+                        [0., 0., 0., 1.]])
+        # Process noise matrix
+        q = Q_discrete_white_noise(dim=2, dt=dt, var=Q)
+        f.Q = block_diag(q, q)
+        # Measurement function
+        f.H = np.array([[1., 0., 0., 0.],
+                        [0., 0., 1., 0.]])
+        # Measurement noise matrix
+        f.R = np.array([[R, 0.],
+                        [0., R]])
+        # Current state estimate
+        f.x = np.array([[0., 0., 0., 0.]]).T
+        # Current state covariance matrix
+        f.P = np.eye(4) * 1000.
+
+    def _init_3x_1z(self):
+        f = self
+        dt = self.dt
+        Q = self._kfQ
+        R = self._kfR
+        # State Transition matrix
+        f.F = np.array([[1., dt, .5 * dt**2],
+                        [0., 1., dt],
+                        [0., 0., 1.]])
+        # Process noise matrix
+        f.Q = Q_discrete_white_noise(dim=3, dt=dt, var=Q)
+        # Measurement function
+        f.H = np.array([[1., 0., 0.]])
+        # Measurement noise matrix
+        f.R = np.array([[R]])
+        # Current state estimate
+        f.x = np.array([[0., 0., 0.]]).T
+        # Current state covariance matrix
+        f.P = np.eye(3) * 1000.
+
+    def _init_2x_1z(self):
+        f = self
+        dt = self.dt
+        Q = self._kfQ
+        R = self._kfR
+        # State Transition matrix
+        f.F = np.array([[1., dt],
+                        [0., 1.]])
+        # Process noise matrix
+        f.Q = Q_discrete_white_noise(dim=2, dt=dt, var=Q)
+        # Measurement function
+        f.H = np.array([[1., 0.]])
+        # Measurement noise matrix
+        f.R = np.array([[R]])
+        # Current state estimate
+        f.x = np.array([[0., 0.]]).T
+        # Current state covariance matrix
+        f.P = np.eye(2) * 1000.
+
+    @property
+    def kfQ(self):
+        return self._kfQ
+
+    @kfQ.setter
+    def kfQ(self, value):
+        f = self
+        self._kfQ = float(value)
+        dim = int(f.dim_x/f.dim_z)
+        q = Q_discrete_white_noise(dim=dim, dt=self.dt, var=self._kfQ)
+        if f.dim_z == 2:
+            q = block_diag(q, q)
+
+        f.Q = q
+
+    @property
+    def kfR(self):
+        return self._kfR
+
+    @kfR.setter
+    def kfR(self, value):
+        f = self
+        self._kfR = float(value)
+        if f.dim_z == 1:
+            f.R = np.array([[self._kfR]])
+        elif f.dim_z == 2:
+            f.R = np.array([[self._kfR, 0.],
+                            [0., self._kfR]])
 
 
 def annotate_frame(frame, shapes, face, mouse):
@@ -1448,91 +1558,6 @@ def feature_center(shapes):
         centx = int(centx / len(shapes))
         centy = int(centy / len(shapes))
     return centx, centy
-
-
-def kalmanfilter_dim6_init(dt=1 / 20, Q=2.0, R=2.0):
-    f = KalmanFilter(dim_x=6, dim_z=2)
-    # State Transition matrix
-    f.F = np.array([[1., dt, .5 * dt**2, 0., 0., 0.],
-                    [0., 1., dt, 0., 0., 0.],
-                    [0., 0., 1., 0., 0., 0.],
-                    [0., 0., 0., 1., dt, .5 * dt**2],
-                    [0., 0., 0., 0., 1., dt],
-                    [0., 0., 0., 0., 0., 1.]])
-    # Process noise matrix
-    q = Q_discrete_white_noise(dim=3, dt=dt, var=Q)
-    f.Q = block_diag(q, q)
-    # Measurement function
-    f.H = np.array([[1., 0., 0., 0., 0., 0.],
-                    [0., 0., 0., 1., 0., 0.]])
-    # Measurement noise matrix
-    f.R = np.array([[R, 0.],
-                    [0., R]])
-    # Current state estimate
-    f.x = np.array([[0., 0., 0., 0., 0., 0.]]).T
-    # Current state covariance matrix
-    f.P = np.eye(6) * 1000.
-    return f
-
-
-def kalmanfilter_dim4_init(dt=1 / 20, Q=2.0, R=2.0):
-    f = KalmanFilter(dim_x=4, dim_z=2)
-    # State Transition matrix
-    f.F = np.array([[1., dt, 0., 0.],
-                    [0., 1., 0., 0.],
-                    [0., 0., 1., dt],
-                    [0., 0., 0., 1.]])
-    # Process noise matrix
-    q = Q_discrete_white_noise(dim=2, dt=dt, var=Q)
-    f.Q = block_diag(q, q)
-    # Measurement function
-    f.H = np.array([[1., 0., 0., 0.],
-                    [0., 0., 1., 0.]])
-    # Measurement noise matrix
-    f.R = np.array([[R, 0.],
-                    [0., R]])
-    # Current state estimate
-    f.x = np.array([[0., 0., 0., 0.]]).T
-    # Current state covariance matrix
-    f.P = np.eye(4) * 1000.
-    return f
-
-
-def kalmanfilter_dim3_init(dt=1 / 20, Q=2.0, R=2.0):
-    f = KalmanFilter(dim_x=3, dim_z=1)
-    # State Transition matrix
-    f.F = np.array([[1., dt, .5 * dt**2],
-                    [0., 1., dt],
-                    [0., 0., 1.]])
-    # Process noise matrix
-    f.Q = Q_discrete_white_noise(dim=3, dt=dt, var=Q)
-    # Measurement function
-    f.H = np.array([[1., 0., 0.]])
-    # Measurement noise matrix
-    f.R = np.array([[R]])
-    # Current state estimate
-    f.x = np.array([[0., 0., 0.]]).T
-    # Current state covariance matrix
-    f.P = np.eye(3) * 1000.
-    return f
-
-
-def kalmanfilter_dim2_init(dt=1 / 20, Q=2.0, R=2.0):
-    f = KalmanFilter(dim_x=2, dim_z=1)
-    # State Transition matrix
-    f.F = np.array([[1., dt],
-                    [0., 1.]])
-    # Process noise matrix
-    f.Q = Q_discrete_white_noise(dim=2, dt=dt, var=Q)
-    # Measurement function
-    f.H = np.array([[1., 0.]])
-    # Measurement noise matrix
-    f.R = np.array([[R]])
-    # Current state estimate
-    f.x = np.array([[0., 0.]]).T
-    # Current state covariance matrix
-    f.P = np.eye(2) * 1000.
-    return f
 
 
 def parse_arguments():
