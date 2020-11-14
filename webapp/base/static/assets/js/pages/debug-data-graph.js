@@ -11,7 +11,7 @@ var runScript = function() {
     var dif_buf = [];
     var up_buf = [];
     var updateInterval = 30;   // ms
-    var realtime_brow       = 'off'; //If == to on then fetch data every x seconds. else stop fetching
+    var realtime_brow       = 'on'; //If == to on then fetch data every x seconds. else stop fetching
 
     var xraw_buf = [];
     var yraw_buf = [];
@@ -23,7 +23,7 @@ var runScript = function() {
     var xacc_buf = [];
     var ydelt_buf = [];
     var yacc_buf = [];
-    var realtime_nose       = 'off'; //If == to on then fetch data every x seconds. else stop fetching
+    var realtime_nose       = 'on'; //If == to on then fetch data every x seconds. else stop fetching
 
     var brow_dataset = {
         "average height": {
@@ -261,15 +261,9 @@ var runScript = function() {
         }
     }
 
-    //INITIALIZE REALTIME DATA FETCHING
-    if (realtime_brow === 'on') {
-        update_brow();
-    }
-    if (realtime_nose === 'on') {
-        update_nose();
-    }
     //REALTIME TOGGLE
     $('#realtime-brow .btn').click(function () {
+        $(this).addClass('active').siblings().removeClass('active');
         if ($(this).data('toggle') === 'on') {
             realtime_brow = 'on';
             var now = (new Date()).getTime();
@@ -285,6 +279,7 @@ var runScript = function() {
         update_brow();
     });
     $('#realtime-nose .btn').click(function () {
+        $(this).addClass('active').siblings().removeClass('active');
         if ($(this).data('toggle') === 'on') {
             realtime_nose = 'on';
             var now = (new Date()).getTime();
@@ -337,4 +332,16 @@ var runScript = function() {
             ++i;
         });
     });
+
+    //INITIALIZE REALTIME DATA FETCHING
+    if (realtime_brow === 'on') {
+        $('#realtime-brow .btn').first().click();
+    } else {
+        $('#realtime-brow .btn').last().click();
+    }
+    if (realtime_nose === 'on') {
+        $('#realtime-nose .btn').first().click();
+    } else {
+        $('#realtime-nose .btn').last().click();
+    }
 };
