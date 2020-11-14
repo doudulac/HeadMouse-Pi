@@ -1466,18 +1466,18 @@ def face_detect(demoq, detector, predictor):
         sgframe = cv2.resize(gframe, dim, interpolation=cv2.INTER_AREA)
         faces = detector(sgframe)
         if len(faces) == 0:
+            shapes = None
             if not mouse.paused:
                 no_face_frames += 1
                 if _args_.verbose > 0:
                     log.debug('{} no face'.format(no_face_frames))
-            continue
-
-        face_rect = dlib.rectangle(int(faces[0].left() / r),
-                                   int(faces[0].top() / r),
-                                   int(faces[0].right() / r),
-                                   int(faces[0].bottom() / r))
-        shapes = predictor(gframe, face_rect)
-        shapes = face_utils.shape_to_np(shapes)
+        else:
+            face_rect = dlib.rectangle(int(faces[0].left() / r),
+                                       int(faces[0].top() / r),
+                                       int(faces[0].right() / r),
+                                       int(faces[0].bottom() / r))
+            shapes = predictor(gframe, face_rect)
+            shapes = face_utils.shape_to_np(shapes)
 
         _fps_.stop()
         try:
@@ -1496,14 +1496,7 @@ def face_detect(demoq, detector, predictor):
             _fps_.start()
 
         face.update(framenum, shapes)
-        try:
-            mouse.update()
-        except BrokenPipeError as e:
-            if _args_.verbose > 0:
-                log.info(e)
-            restart = True
-            running = False
-            break
+        mouse.update()
 
         if not _args_.onraspi or writer is not None or ws.has_client():
             annotate_frame(frame, shapes, face, mouse)
