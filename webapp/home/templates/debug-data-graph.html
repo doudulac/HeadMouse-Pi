@@ -16,15 +16,9 @@
   <link rel="stylesheet" href="/static/assets/css/adminlte.min.css">
 
   <style>
-    .grid-container {
+    .chart-grid-container {
       display: grid;
       grid-template-columns: auto 130px;
-      padding: 10px;
-    }
-
-    .chart-opts-grid {
-      display: grid;
-      grid-template-columns: auto 100px 100px auto;
       padding: 10px;
     }
 
@@ -85,7 +79,25 @@
                 </div>
                 </div>
                 <div class="card-body">
-                  <div class="grid-container">
+                  <div class="form-group">
+                    <div class="row">
+                      <div class="col-sm-2">
+                        <div class="input-group input-group-sm">
+                          <label for="br-kf-q">kf.Q</label>
+                          <input type="text" class="form-control" id="br-kf-q" value="{{ brkfQ }}">
+                          &nbsp;
+                          <label for="br-kf-r">kf.R</label>
+                          <input type="text" class="form-control" id="br-kf-r" value="{{ brkfR }}">
+                        </div>
+                      </div>
+                      <div class="col-sm-2">
+                        <div class="input-group input-group-sm">
+                          <button type="submit" class="btn btn-primary" id="br-kf-btn">Submit</button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="chart-grid-container">
                     <div id="brow-chart" style="height: 300px;"></div>
                     <div id="brow-series"></div>
                   </div>
@@ -121,27 +133,25 @@
                 </div>
                 </div>
                 <div class="card-body">
-                  <div class="grid-container">
-                    <div class="chart-opts-grid">
-                      <div></div>
-                      <div class="input-group input-group-sm">
-                        <label for="ns-kf-q">kf.Q</label>
-                        <input type="text" class="form-control" id="ns-kf-q" value="{{ nskfQ }}">
-                        <span class="input-group-append">
-                          <button type="button" class="btn btn-info btn-flat" id="ns-kf-q-btn">
-                            <i class="far fa-check-square"></i></button>
-                        </span>
+                  <div class="form-group">
+                    <div class="row">
+                      <div class="col-sm-2">
+                        <div class="input-group input-group-sm">
+                          <label for="ns-kf-q">kf.Q</label>
+                          <input type="text" class="form-control" id="ns-kf-q" value="{{ nskfQ }}">
+                          &nbsp;
+                          <label for="ns-kf-r">kf.R</label>
+                          <input type="text" class="form-control" id="ns-kf-r" value="{{ nskfR }}">
+                        </div>
                       </div>
-                      <div class="input-group input-group-sm">
-                        <label for="ns-kf-r">kf.R</label>
-                        <input type="text" class="form-control" id="ns-kf-r" value="{{ nskfR }}">
-                        <span class="input-group-append">
-                          <button type="button" class="btn btn-info btn-flat" id="ns-kf-r-btn">
-                            <i class="far fa-check-square"></i></button>
-                        </span>
+                      <div class="col-sm-2">
+                        <div class="input-group input-group-sm">
+                          <button type="submit" class="btn btn-primary" id="ns-kf-btn">Submit</button>
+                        </div>
                       </div>
                     </div>
-                    <div></div>
+                  </div>
+                  <div class="chart-grid-container">
                     <div id="nose-chart" style="height: 300px;"></div>
                     <div id="nose-series"></div>
                   </div>

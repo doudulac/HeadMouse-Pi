@@ -1112,6 +1112,9 @@ class WebServer(object):
     # @socketio.on('ns_kf_update')
     def kfupdate(self, values):
         face = self.app.jinja_env.globals['face']
+        if 'brows' in values:
+            face.brows.kf.kfQ = values['brows']['Q']
+            face.brows.kf.kfR = values['brows']['R']
         if 'nose' in values:
             face.nose.kf.kfQ = values['nose']['Q']
             face.nose.kf.kfR = values['nose']['R']

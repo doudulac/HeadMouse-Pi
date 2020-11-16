@@ -295,11 +295,11 @@ var runScript = function() {
         update_nose();
     });
 
-    $('#ns-kf-q-btn').click(function () {
-        socket.emit('kf_update', { nose: { Q: $('#ns-kf-q').val(), R: $('#ns-kf-r').val() } });
+    $('#br-kf-btn').click(function () {
+        socket.emit('kf_update', { brows: { Q: $('#br-kf-q').val(), R: $('#br-kf-r').val() } });
     });
 
-    $('#ns-kf-r-btn').click(function () {
+    $('#ns-kf-btn').click(function () {
         socket.emit('kf_update', { nose: { Q: $('#ns-kf-q').val(), R: $('#ns-kf-r').val() } });
     });
 

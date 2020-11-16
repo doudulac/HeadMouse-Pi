@@ -45,6 +45,8 @@ def preferences():
 def debug_data_graph():
     face = current_app.jinja_env.globals['face']
     return render_template('debug-data-graph.html',
+                           brkfQ=face.brows.kf.kfQ,
+                           brkfR=face.brows.kf.kfR,
                            nskfQ=face.nose.kf.kfQ,
                            nskfR=face.nose.kf.kfR)
 
