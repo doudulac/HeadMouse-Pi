@@ -9,7 +9,11 @@
         <a href="/preferences" class="nav-link">Home</a>
       </li>
       <li class="nav-item d-none d-sm-inline-block">
+        {% if mouse.paused %}
+        <a href="/pause" class="nav-link" style="color:Tomato;"><b><strong>Unpause</strong></b></a>
+        {% else %}
         <a href="/pause" class="nav-link">Pause</a>
+        {% endif %}
       </li>
     </ul>
 
