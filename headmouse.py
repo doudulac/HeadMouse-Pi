@@ -616,36 +616,45 @@ class Eyes(object):
         dt = None if fps is None else 1.0 / fps
         self.kf = MyKalmanFilter(dim_x=2, dim_z=1, dt=dt, Q=1.0, R=.05)
         self._pupilary_dist = None
+        self.send_debug_data = False
 
     def update(self):
-        shapes = self.face.shapes
-        if shapes is None:
-            return
-
         # reye 36,41
         # leye 42,47
+        shapes = self.face.shapes
+        if shapes is None:
+            ear = 0
+            self._pupilary_dist = 0
+            kpos = 0
+            kvel = 0
+        else:
+            rec = feature_center(shapes[36:42])
+            lec = feature_center(shapes[42:48])
+            self._pupilary_dist = point_distance(rec, lec)
 
-        rec = feature_center(shapes[36:42])
-        lec = feature_center(shapes[42:48])
-        self._pupilary_dist = point_distance(rec, lec)
+            red = (point_distance(shapes[37], shapes[41]) + point_distance(shapes[38], shapes[40])) / \
+                  (2.0 * point_distance(shapes[36], shapes[39]))
+            led = (point_distance(shapes[43], shapes[47]) + point_distance(shapes[44], shapes[46])) / \
+                  (2.0 * point_distance(shapes[42], shapes[45]))
+            ear = (red + led) / 2
 
-        red = (point_distance(shapes[37], shapes[41]) + point_distance(shapes[38], shapes[40])) / \
-              (2.0 * point_distance(shapes[36], shapes[39]))
-        led = (point_distance(shapes[43], shapes[47]) + point_distance(shapes[44], shapes[46])) / \
-              (2.0 * point_distance(shapes[42], shapes[45]))
-        ear = (red + led) / 2
+            self.kf.predict()
+            self.kf.update(ear)
+            kpos = self.kf.x[0][0]
+            kvel = self.kf.x[1][0]
 
-        self.kf.predict()
-        self.kf.update(ear)
-        if self.kf.x[0][0] < _args_.ear:
+        if kpos < _args_.ear:
             self._open = False
         else:
             self._open = True
 
         if _args_.debug_eyes:
             log.info("eyes {:5.02f} {:5.02f} {:6.03f} {}".format(
-                ear, self.kf.x[0][0], self.kf.x[1][0], "O" if self._open else "."
+                ear, kpos, kvel, "O" if self._open else "."
             ))
+
+        if self.send_debug_data:
+            self._ws.socketio.emit('eyes_data', [ear, kpos, kvel, self._pupilary_dist, self._open])
 
     @property
     def open(self):
@@ -1137,6 +1146,9 @@ class WebServer(object):
         if 'mouth' in values:
             face.mouth.kf.kfQ = values['mouth']['Q']
             face.mouth.kf.kfR = values['mouth']['R']
+        if 'eyes' in values:
+            face.eyes.kf.kfQ = values['eyes']['Q']
+            face.eyes.kf.kfR = values['eyes']['R']
 
     # @socketio.on('toggle_debug_data')
     def toggledebugdata(self, data):
@@ -1147,6 +1159,8 @@ class WebServer(object):
             face.nose.send_debug_data = data['nose']
         if 'mouth' in data.keys():
             face.mouth.send_debug_data = data['mouth']
+        if 'eyes' in data.keys():
+            face.eyes.send_debug_data = data['eyes']
 
     # @socketio.on('disconnect')
     def disconnect(self):
@@ -1154,6 +1168,7 @@ class WebServer(object):
         face.brows.send_debug_data = False
         face.nose.send_debug_data = False
         face.mouth.send_debug_data = False
+        face.eyes.send_debug_data = False
 
 
 class MyArgumentParser(ArgumentParser):

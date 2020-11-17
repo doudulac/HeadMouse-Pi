@@ -50,7 +50,9 @@ def debug_data_graph():
                            nskfQ=face.nose.kf.kfQ,
                            nskfR=face.nose.kf.kfR,
                            mokfQ=face.mouth.kf.kfQ,
-                           mokfR=face.mouth.kf.kfR)
+                           mokfR=face.mouth.kf.kfR,
+                           eykfQ=face.eyes.kf.kfQ,
+                           eykfR=face.eyes.kf.kfR)
 
 
 @blueprint.route('/pause')

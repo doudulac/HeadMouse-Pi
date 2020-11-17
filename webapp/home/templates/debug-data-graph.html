@@ -218,6 +218,61 @@
           </div>
           <!-- /.row -->
 
+          <div class="row">
+            <div class="col-12">
+              <!-- interactive chart -->
+              <div class="card card-primary card-outline">
+                <div class="card-header">
+                  <h3 class="card-title">
+                    <i class="far fa-chart-bar"></i>
+                    Eyes
+                  </h3>
+
+                  <div class="card-tools">
+                    Real time
+                    <div class="btn-group" id="realtime-eyes" data-toggle="btn-toggle">
+                      <button type="button" class="btn btn-primary btn-sm" data-toggle="on">On</button>
+                      <button type="button" class="btn btn-primary btn-sm" data-toggle="off">Off</button>
+                    </div>
+                    <button type="button" class="btn btn-tool" data-card-widget="collapse">
+                        <i class="fas fa-minus"></i></button>
+                  </div>
+                  <div class="card-tools">
+                </div>
+                </div>
+                <div class="card-body">
+                  <div class="form-group">
+                    <div class="row">
+                      <div class="col-sm-2">
+                        <div class="input-group input-group-sm">
+                          <label for="ey-kf-q">kf.Q</label>
+                          <input type="text" class="form-control" id="ey-kf-q" value="{{ eykfQ }}">
+                          &nbsp;
+                          <label for="ey-kf-r">kf.R</label>
+                          <input type="text" class="form-control" id="ey-kf-r" value="{{ eykfR }}">
+                        </div>
+                      </div>
+                      <div class="col-sm-2">
+                        <div class="input-group input-group-sm">
+                          <button type="submit" class="btn btn-primary" id="ey-kf-btn">Submit</button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="chart-grid-container">
+                    <div id="eyes-chart" style="height: 300px;"></div>
+                    <div id="eyes-series"></div>
+                  </div>
+                </div>
+                <!-- /.card-body-->
+              </div>
+              <!-- /.card -->
+            </div>
+            <!-- /.col -->
+          </div>
+          <!-- /.row -->
+
+
         </div><!-- /.container-fluid -->
       </section>
 

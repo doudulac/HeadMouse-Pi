@@ -45,6 +45,15 @@ var runScript = function() {
     };
     var realtime_mouth       = 'on'; //If == to on then fetch data every x seconds. else stop fetching
 
+    var eyes_buf = {
+        raw_ear: [],
+        kf_ear: [],
+        kf_vel: [],
+        pup_dist: [],
+        open: [],
+    };
+    var realtime_eyes       = 'on'; //If == to on then fetch data every x seconds. else stop fetching
+
     var brow_dataset = {
         "average height": {
             xaxis: 1, yaxis: 1,
@@ -208,9 +217,40 @@ var runScript = function() {
         },
     };
 
+    var eyes_dataset = {
+        "raw ear": {
+            xaxis: 1, yaxis: 1,
+            label: "raw ear",
+            lines: { fill: false },
+            data: eyes_buf.raw_ear,
+        },
+        "kf ear": {
+            xaxis: 1, yaxis: 1,
+            label: "kf ear",
+            lines: { fill: false },
+            data: eyes_buf.kf_ear,
+        },
+        "kf vel": {
+            xaxis: 1, yaxis: 2,
+            label: "kf vel",
+            data: eyes_buf.kf_vel,
+        },
+        "pupil dist": {
+            xaxis: 1, yaxis: 1,
+            label: "pupil dist",
+            data: eyes_buf.pup_dist,
+        },
+        "open": {
+            xaxis: 1, yaxis: 1,
+            label: "open",
+            data: eyes_buf.open,
+        },
+    };
+
     var browSeriesContainer = $("#brow-series");
     var noseSeriesContainer = $("#nose-series");
     var mouthSeriesContainer = $("#mouth-series");
+    var eyesSeriesContainer = $("#eyes-series");
     var now = (new Date()).getTime();
     var i = 0;
     $.each(brow_dataset, function(key, val) {
@@ -238,6 +278,16 @@ var runScript = function() {
         val.color = i;
         ++i;
         mouthSeriesContainer.append("<br/><input type='checkbox' name='" + key +
+            "' checked='checked' id='id" + key + "'></input>" +
+            "&nbsp;<label for='id" + key + "'>"
+            + val.label + "</label>");
+    });
+    i = 0;
+    $.each(eyes_dataset, function(key, val) {
+        initData(now, val.data);
+        val.color = i;
+        ++i;
+        eyesSeriesContainer.append("<br/><input type='checkbox' name='" + key +
             "' checked='checked' id='id" + key + "'></input>" +
             "&nbsp;<label for='id" + key + "'>"
             + val.label + "</label>");
@@ -330,6 +380,35 @@ var runScript = function() {
         }],
     });
 
+    var eyes_plot = $.plot('#eyes-chart', getEyesData(),
+    {
+        legend: {
+            show: true,
+            position: "sw",
+        },
+        grid: {
+            borderColor: '#f3f3f3',
+            borderWidth: 1,
+            tickColor: '#f3f3f3',
+        },
+        series: {
+            color: '#3c8dbc',
+            lines: {
+                lineWidth: 2,
+                show: true,
+                fill: true,
+            },
+        },
+        yaxes: [{min: 0, max: 50,}, {position: "right"}],
+        xaxes: [{
+            mode: "time",
+            timeBase: "milliseconds",
+            timeformat: "%I:%M:%S",
+            timezone: "browser",
+            show: true,
+        }],
+    });
+
     function getBrowData() {
         var data = [];
         browSeriesContainer.find("input:checked").each(function () {
@@ -363,6 +442,17 @@ var runScript = function() {
         return data;
     }
 
+    function getEyesData() {
+        var data = [];
+        eyesSeriesContainer.find("input:checked").each(function () {
+            var key = $(this).attr("name");
+            if (key && eyes_dataset[key]) {
+                data.push(eyes_dataset[key]);
+            }
+        });
+        return data;
+    }
+
     function update_brow() {
         brow_plot.setData(getBrowData());
         brow_plot.setupGrid(true);
@@ -390,6 +480,16 @@ var runScript = function() {
 
         if (realtime_mouth === 'on') {
           setTimeout(update_mouth, updateInterval);
+        }
+    }
+
+    function update_eyes() {
+        eyes_plot.setData(getEyesData());
+        eyes_plot.setupGrid(true);
+        eyes_plot.draw();
+
+        if (realtime_eyes === 'on') {
+          setTimeout(update_eyes, updateInterval);
         }
     }
 
@@ -448,6 +548,22 @@ var runScript = function() {
         }
         update_mouth();
     });
+    $('#realtime-eyes .btn').click(function () {
+        $(this).addClass('active').siblings().removeClass('active');
+        if ($(this).data('toggle') === 'on') {
+            realtime_eyes = 'on';
+            var now = (new Date()).getTime();
+            $.each(eyes_dataset, function(key, val) {
+                initData(now, val.data);
+            });
+            socket.emit('toggle_debug_data', { eyes: true });
+        }
+        else {
+            realtime_eyes = 'off';
+            socket.emit('toggle_debug_data', { eyes: false });
+        }
+        update_eyes();
+    });
 
     $('#br-kf-btn').click(function () {
         socket.emit('kf_update', { brows: { Q: $('#br-kf-q').val(), R: $('#br-kf-r').val() } });
@@ -459,6 +575,10 @@ var runScript = function() {
 
     $('#mo-kf-btn').click(function () {
         socket.emit('kf_update', { mouth: { Q: $('#mo-kf-q').val(), R: $('#mo-kf-r').val() } });
+    });
+
+    $('#ey-kf-btn').click(function () {
+        socket.emit('kf_update', { eyes: { Q: $('#ey-kf-q').val(), R: $('#ey-kf-r').val() } });
     });
 
     socket.on('brow_data', function(data) {
@@ -510,6 +630,15 @@ var runScript = function() {
         });
     });
 
+    socket.on('eyes_data', function(data) {
+        var now = (new Date()).getTime();
+        var i = 0;
+        $.each(eyes_dataset, function(key, val) {
+            if (val.data.push([now, data[i]]) > maxbuf) { val.data.shift(); }
+            ++i;
+        });
+    });
+
     //INITIALIZE REALTIME DATA FETCHING
     if (realtime_brow === 'on') {
         $('#realtime-brow .btn').first().click();
@@ -525,6 +654,11 @@ var runScript = function() {
         $('#realtime-mouth .btn').first().click();
     } else {
         $('#realtime-mouth .btn').last().click();
+    }
+    if (realtime_eyes === 'on') {
+        $('#realtime-eyes .btn').first().click();
+    } else {
+        $('#realtime-eyes .btn').last().click();
     }
 
 };
