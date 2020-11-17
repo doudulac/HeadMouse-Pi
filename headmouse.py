@@ -375,7 +375,7 @@ class Face(object):
                                                                        self._cur_angle[1]))
 
     def facing_camera(self):
-        if abs(self.x_angle) > 5.0 or self.y_angle < -5.0 or self.y_angle > 0:
+        if self._shapes is None or abs(self.x_angle) > 5.0 or self.y_angle < -5.0 or self.y_angle > 0:
             return False
         else:
             return True
