@@ -421,28 +421,40 @@ class MouthOpen(object):
     def __init__(self, face, webserver=None):
         self.face = face
         self._vdists = None
-        self._cur_vdist = None
+        self._vdist = None
         self._hdists = None
-        self._cur_hdist = None
+        self._hdist = None
         self._open = False
+        self.kf = MyKalmanFilter(dim_x=6, dim_z=2, dt=1 / 30, Q=1.0, R=.05)
+        self._ws = webserver
+        self.send_debug_data = False
 
     def update(self):
-        shapes = self.face.shapes
-        if shapes is None:
-            return
-
         # moutho 48,59
         # mouthi 60,67
-
-        lc = shapes[60]
-        rc = shapes[64]
-        hdist = point_distance(lc, rc)
-        up = shapes[62]
-        lo = shapes[66]
-        vdist = point_distance(up, lo)
-
         _n = 6
         _s = -2
+        shapes = self.face.shapes
+        if shapes is None:
+            vdist = self._vdists[-1] if self._vdists is not None else 0
+            hdist = self._hdists[-1] if self._hdists is not None else 0
+            kpos = 0
+            kvel = 0
+            kacc = 0
+        else:
+            up = shapes[62]
+            lo = shapes[66]
+            vdist = point_distance(up, lo)
+            lc = shapes[60]
+            rc = shapes[64]
+            hdist = point_distance(lc, rc)
+
+            self.kf.predict()
+            self.kf.update([vdist, hdist])
+            kpos = (self.kf.x[0][0], self.kf.x[3][0])
+            kvel = (self.kf.x[1][0], self.kf.x[4][0])
+            kacc = (self.kf.x[2][0], self.kf.x[5][0])
+
         if self._vdists is None:
             self._vdists = [vdist, ] * _n
             self._hdists = [hdist, ] * _n
@@ -452,11 +464,12 @@ class MouthOpen(object):
             self._hdists.append(self._hdists.pop(0))
             self._hdists[-1] = hdist
 
-        self._cur_vdist = sum(self._vdists[_s:]) / len(self._vdists[_s:])
-        vpast = sum(self._vdists[:_s]) / len(self._vdists[:_s])
-        self._cur_hdist = sum(self._hdists[_s:]) / len(self._hdists[_s:])
-        hpast = sum(self._hdists[:_s]) / len(self._hdists[:_s])
-        _r = self._cur_vdist / self._cur_hdist
+        self._vdist = sum(self._vdists[_s:]) / len(self._vdists[_s:])
+        v_ave = sum(self._vdists[:_s]) / len(self._vdists[:_s])
+        self._hdist = sum(self._hdists[_s:]) / len(self._hdists[_s:])
+        h_ave = sum(self._hdists[:_s]) / len(self._hdists[:_s])
+        _ave = (v_ave, h_ave)
+        _r = self._vdist / self._hdist if self._hdist != 0 else 0
 
         if not self._open:
             self._open = _r >= .50
@@ -465,7 +478,10 @@ class MouthOpen(object):
 
         if _args_.debug_mouth:
             log.info("mouth {:.02f} {:.02f} {:.02f} {:.02f} {:.02f}".format(
-                vpast, self._cur_vdist, hpast, self._cur_hdist, _r))
+                v_ave, self._vdist, h_ave, self._hdist, _r))
+
+        if self.send_debug_data:
+            self._ws.socketio.emit('mouth_data', [_ave, (self._vdist, self._hdist), _r, kpos, kvel, kacc])
 
     @property
     def open(self):
@@ -1118,6 +1134,9 @@ class WebServer(object):
         if 'nose' in values:
             face.nose.kf.kfQ = values['nose']['Q']
             face.nose.kf.kfR = values['nose']['R']
+        if 'mouth' in values:
+            face.mouth.kf.kfQ = values['mouth']['Q']
+            face.mouth.kf.kfR = values['mouth']['R']
 
     # @socketio.on('toggle_debug_data')
     def toggledebugdata(self, data):
@@ -1126,12 +1145,15 @@ class WebServer(object):
             face.brows.send_debug_data = data['brows']
         if 'nose' in data.keys():
             face.nose.send_debug_data = data['nose']
+        if 'mouth' in data.keys():
+            face.mouth.send_debug_data = data['mouth']
 
     # @socketio.on('disconnect')
     def disconnect(self):
         face = self.app.jinja_env.globals['face']
         face.brows.send_debug_data = False
         face.nose.send_debug_data = False
+        face.mouth.send_debug_data = False
 
 
 class MyArgumentParser(ArgumentParser):

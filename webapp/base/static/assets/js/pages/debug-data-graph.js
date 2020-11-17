@@ -1,6 +1,8 @@
 var runScript = function() {
     var socket = io();
     var maxbuf = 300;
+    var updateInterval = 30;   // ms
+
     var ave_buf = [];
     var cur_buf = [];
     var pos_buf = [];
@@ -10,7 +12,6 @@ var runScript = function() {
     var fcy_buf = [];
     var dif_buf = [];
     var up_buf = [];
-    var updateInterval = 30;   // ms
     var realtime_brow       = 'on'; //If == to on then fetch data every x seconds. else stop fetching
 
     var xraw_buf = [];
@@ -24,6 +25,21 @@ var runScript = function() {
     var ydelt_buf = [];
     var yacc_buf = [];
     var realtime_nose       = 'on'; //If == to on then fetch data every x seconds. else stop fetching
+
+    var mouth_buf = {
+        v_ave: [],
+        h_ave: [],
+        v_cur: [],
+        h_cur: [],
+        ratio: [],
+        v_pos: [],
+        h_pos: [],
+        v_vel: [],
+        h_vel: [],
+        v_acc: [],
+        h_acc: [],
+    };
+    var realtime_mouth       = 'on'; //If == to on then fetch data every x seconds. else stop fetching
 
     var brow_dataset = {
         "average height": {
@@ -131,8 +147,67 @@ var runScript = function() {
         },
     };
 
+    var mouth_dataset = {
+        "ver ave": {
+            xaxis: 1, yaxis: 1,
+            label: "ver ave",
+            data: mouth_buf.v_ave,
+        },
+        "hor ave": {
+            xaxis: 1, yaxis: 1,
+            label: "hor ave",
+            data: mouth_buf.h_ave,
+        },
+        "ver cur": {
+            xaxis: 1, yaxis: 1,
+            label: "ver cur",
+            data: mouth_buf.v_cur,
+        },
+        "hor cur": {
+            xaxis: 1, yaxis: 1,
+            label: "hor cur",
+            data: mouth_buf.h_cur,
+        },
+        "ratio": {
+            xaxis: 1, yaxis: 1,
+            label: "ratio",
+            data: mouth_buf.ratio,
+        },
+        "ver pos": {
+            xaxis: 1, yaxis: 2,
+            label: "ver pos",
+            data: mouth_buf.v_pos,
+        },
+        "hor pos": {
+            xaxis: 1, yaxis: 2,
+            label: "hor pos",
+            data: mouth_buf.h_pos,
+        },
+        "ver vel": {
+            xaxis: 1, yaxis: 2,
+            label: "ver vel",
+            data: mouth_buf.v_vel,
+        },
+        "hor vel": {
+            xaxis: 1, yaxis: 2,
+            label: "hor vel",
+            data: mouth_buf.h_vel,
+        },
+        "ver acc": {
+            xaxis: 1, yaxis: 2,
+            label: "ver acc",
+            data: mouth_buf.v_acc,
+        },
+        "hor acc": {
+            xaxis: 1, yaxis: 2,
+            label: "hor acc",
+            data: mouth_buf.h_acc,
+        },
+    };
+
     var browSeriesContainer = $("#brow-series");
     var noseSeriesContainer = $("#nose-series");
+    var mouthSeriesContainer = $("#mouth-series");
     var now = (new Date()).getTime();
     var i = 0;
     $.each(brow_dataset, function(key, val) {
@@ -150,6 +225,16 @@ var runScript = function() {
         val.color = i;
         ++i;
         noseSeriesContainer.append("<br/><input type='checkbox' name='" + key +
+            "' checked='checked' id='id" + key + "'></input>" +
+            "&nbsp;<label for='id" + key + "'>"
+            + val.label + "</label>");
+    });
+    i = 0;
+    $.each(mouth_dataset, function(key, val) {
+        initData(now, val.data);
+        val.color = i;
+        ++i;
+        mouthSeriesContainer.append("<br/><input type='checkbox' name='" + key +
             "' checked='checked' id='id" + key + "'></input>" +
             "&nbsp;<label for='id" + key + "'>"
             + val.label + "</label>");
@@ -213,6 +298,35 @@ var runScript = function() {
         }],
     });
 
+    var mouth_plot = $.plot('#mouth-chart', getMouthData(),
+    {
+        legend: {
+            show: true,
+            position: "sw",
+        },
+        grid: {
+            borderColor: '#f3f3f3',
+            borderWidth: 1,
+            tickColor: '#f3f3f3',
+        },
+        series: {
+            color: '#3c8dbc',
+            lines: {
+                lineWidth: 2,
+                show: true,
+                fill: true,
+            },
+        },
+        yaxes: [{min: 0, max: 50,}, {position: "right"}],
+        xaxes: [{
+            mode: "time",
+            timeBase: "milliseconds",
+            timeformat: "%I:%M:%S",
+            timezone: "browser",
+            show: true,
+        }],
+    });
+
     function getBrowData() {
         var data = [];
         browSeriesContainer.find("input:checked").each(function () {
@@ -235,6 +349,17 @@ var runScript = function() {
         return data;
     }
 
+    function getMouthData() {
+        var data = [];
+        mouthSeriesContainer.find("input:checked").each(function () {
+            var key = $(this).attr("name");
+            if (key && mouth_dataset[key]) {
+                data.push(mouth_dataset[key]);
+            }
+        });
+        return data;
+    }
+
     function update_brow() {
         brow_plot.setData(getBrowData());
         brow_plot.setupGrid(true);
@@ -252,6 +377,16 @@ var runScript = function() {
 
         if (realtime_nose === 'on') {
           setTimeout(update_nose, updateInterval);
+        }
+    }
+
+    function update_mouth() {
+        mouth_plot.setData(getMouthData());
+        mouth_plot.setupGrid(true);
+        mouth_plot.draw();
+
+        if (realtime_mouth === 'on') {
+          setTimeout(update_mouth, updateInterval);
         }
     }
 
@@ -294,6 +429,22 @@ var runScript = function() {
         }
         update_nose();
     });
+    $('#realtime-mouth .btn').click(function () {
+        $(this).addClass('active').siblings().removeClass('active');
+        if ($(this).data('toggle') === 'on') {
+            realtime_mouth = 'on';
+            var now = (new Date()).getTime();
+            $.each(mouth_dataset, function(key, val) {
+                initData(now, val.data);
+            });
+            socket.emit('toggle_debug_data', { mouth: true });
+        }
+        else {
+            realtime_mouth = 'off';
+            socket.emit('toggle_debug_data', { mouth: false });
+        }
+        update_mouth();
+    });
 
     $('#br-kf-btn').click(function () {
         socket.emit('kf_update', { brows: { Q: $('#br-kf-q').val(), R: $('#br-kf-r').val() } });
@@ -301,6 +452,10 @@ var runScript = function() {
 
     $('#ns-kf-btn').click(function () {
         socket.emit('kf_update', { nose: { Q: $('#ns-kf-q').val(), R: $('#ns-kf-r').val() } });
+    });
+
+    $('#mo-kf-btn').click(function () {
+        socket.emit('kf_update', { mouth: { Q: $('#mo-kf-q').val(), R: $('#mo-kf-r').val() } });
     });
 
     socket.on('brow_data', function(data) {
@@ -333,6 +488,25 @@ var runScript = function() {
         });
     });
 
+    socket.on('mouth_data', function(data) {
+        var now = (new Date()).getTime();
+        var i = 0;
+        var j = 0;
+        $.each(mouth_dataset, function(key, val) {
+            if (key === 'ratio') {
+                if (val.data.push([now, data[i]]) > maxbuf) { val.data.shift(); }
+                ++i;
+            } else {
+                if (val.data.push([now, data[i][j]]) > maxbuf) { val.data.shift(); }
+                ++j;
+                if (j > 1) {
+                    j = 0;
+                    ++i;
+                }
+            }
+        });
+    });
+
     //INITIALIZE REALTIME DATA FETCHING
     if (realtime_brow === 'on') {
         $('#realtime-brow .btn').first().click();
@@ -344,4 +518,10 @@ var runScript = function() {
     } else {
         $('#realtime-nose .btn').last().click();
     }
+    if (realtime_mouth === 'on') {
+        $('#realtime-mouth .btn').first().click();
+    } else {
+        $('#realtime-mouth .btn').last().click();
+    }
+
 };
