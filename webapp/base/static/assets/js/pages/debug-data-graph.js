@@ -3,27 +3,31 @@ var runScript = function() {
     var maxbuf = 300;
     var updateInterval = 30;   // ms
 
-    var ave_buf = [];
-    var cur_buf = [];
-    var pos_buf = [];
-    var vel_buf = [];
-    var acc_buf = [];
-    var fcx_buf = [];
-    var fcy_buf = [];
-    var dif_buf = [];
-    var up_buf = [];
+    var brow_buf = {
+        ave: [],
+        cur: [],
+        pos: [],
+        vel: [],
+        acc: [],
+        fcx: [],
+        fcy: [],
+        dif: [],
+        up: [],
+    };
     var realtime_brow       = 'on'; //If == to on then fetch data every x seconds. else stop fetching
 
-    var xraw_buf = [];
-    var yraw_buf = [];
-    var xpos_buf = [];
-    var xvel_buf = [];
-    var ypos_buf = [];
-    var yvel_buf = [];
-    var xdelt_buf = [];
-    var xacc_buf = [];
-    var ydelt_buf = [];
-    var yacc_buf = [];
+    var nose_buf = {
+        xraw: [],
+        yraw: [],
+        xpos: [],
+        xvel: [],
+        ypos: [],
+        yvel: [],
+        xdelt: [],
+        xacc: [],
+        ydelt: [],
+        yacc: [],
+    };
     var realtime_nose       = 'on'; //If == to on then fetch data every x seconds. else stop fetching
 
     var mouth_buf = {
@@ -45,49 +49,48 @@ var runScript = function() {
         "average height": {
             xaxis: 1, yaxis: 1,
             label: "average height",
-            data: ave_buf,
+            data: brow_buf.ave,
         },
         "current height": {
             xaxis: 1, yaxis: 1,
             label: "current height",
-            data: cur_buf,
+            data: brow_buf.cur,
         },
         "kf position": {
             xaxis: 1, yaxis: 1,
             label: "kf position",
-            data: pos_buf,
+            data: brow_buf.pos,
         },
         "kf velocity": {
             xaxis: 1, yaxis: 2,
             label: "kf velocity",
-            data: vel_buf,
+            data: brow_buf.vel,
         },
         "kf acceleration": {
             xaxis: 1, yaxis: 2,
             label: "kf acceleration",
-            data: acc_buf,
+            data: brow_buf.acc,
         },
         "face xangle": {
             xaxis: 1, yaxis: 1,
             label: "face xangle",
-            data: fcx_buf,
+            data: brow_buf.fcx,
         },
         "face yangle": {
             xaxis: 1, yaxis: 1,
             label: "face yangle",
-            data: fcy_buf,
+            data: brow_buf.fcy,
         },
         "height delta": {
             xaxis: 1, yaxis: 2,
             label: "height delta",
-            data: dif_buf,
+            data: brow_buf.dif,
         },
         "raised": {
             xaxis: 1, yaxis: 1,
             label: "raised",
-            data: up_buf,
+            data: brow_buf.up,
         },
-
     };
 
     var nose_dataset = {
@@ -95,55 +98,55 @@ var runScript = function() {
             xaxis: 1, yaxis: 1,
             label: "x raw",
             lines: { fill: false },
-            data: xraw_buf,
+            data: nose_buf.xraw,
         },
         "y raw": {
             xaxis: 1, yaxis: 1,
             label: "y raw",
             lines: { fill: false },
-            data: yraw_buf,
+            data: nose_buf.yraw,
         },
         "x pos": {
             xaxis: 1, yaxis: 1,
             label: "x pos",
             lines: { fill: false },
-            data: xpos_buf,
+            data: nose_buf.xpos,
         },
         "x vel": {
             xaxis: 1, yaxis: 2,
             label: "x vel",
-            data: xvel_buf,
+            data: nose_buf.xvel,
         },
         "y pos": {
             xaxis: 1, yaxis: 1,
             label: "y pos",
             lines: { fill: false },
-            data: ypos_buf,
+            data: nose_buf.ypos,
         },
         "y vel": {
             xaxis: 1, yaxis: 2,
             label: "y vel",
-            data: yvel_buf,
+            data: nose_buf.yvel,
         },
         "x delta": {
             xaxis: 1, yaxis: 2,
             label: "x delta",
-            data: xdelt_buf,
+            data: nose_buf.xdelt,
         },
         "x acc": {
             xaxis: 1, yaxis: 2,
             label: "x acc",
-            data: xacc_buf,
+            data: nose_buf.xacc,
         },
         "y delta": {
             xaxis: 1, yaxis: 2,
             label: "y delta",
-            data: ydelt_buf,
+            data: nose_buf.ydelt,
         },
         "y acc": {
             xaxis: 1, yaxis: 2,
             label: "y acc",
-            data: yacc_buf,
+            data: nose_buf.yacc,
         },
     };
 
