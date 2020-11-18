@@ -1,0 +1,11 @@
+title: HeadMouse Pi
+baseurl: "/HeadMouse-Pi"
+url: "https://doudulac.github.io"
+github_username:  doudulac
+show_downloads: true
+
+# Build settings
+markdown: kramdown
+theme: jekyll-theme-hacker
+plugins:
+  - jekyll-github-metadata
