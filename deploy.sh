@@ -18,5 +18,6 @@ EXCLUDES="--exclude \".*\" "
 EXCLUDES+="--exclude __pycache__/ "
 EXCLUDES+="--exclude hm.log "
 EXCLUDES+="--exclude deploy.sh "
+EXCLUDES+="--exclude docs/ "
 
 eval rsync -av --delete-after $EXCLUDES $SSH $DIR/ $DEST
