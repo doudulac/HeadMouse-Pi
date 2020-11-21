@@ -18,6 +18,12 @@
     <meta name="theme-color" content="#157878">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <link rel="stylesheet" href="{{ '/assets/css/style.css?v=' | append: site.github.build_revision | relative_url }}">
+    <link rel="stylesheet" href="{{ '/assets/fontawesome-free/css/all.min.css' | relative_url }}">
+    <style>
+      .fa-download {
+        margin-right: 10px;
+      }
+    </style>
   </head>
   <body>
     <a id="skip-to-content" href="#content">Skip to the content.</a>
@@ -26,7 +32,9 @@
       <h1 class="project-name">{{ page.title | default: site.title | default: site.github.repository_name }}</h1>
       <h2 class="project-tagline">{{ page.description | default: site.description | default: site.github.project_tagline }}</h2>
       {% if site.show_downloads %}
-        <a href="{{ site.github.latest_release.assets[1].browser_download_url }}" class="btn">Download {{ site.github.latest_release.assets[1].name }}</a>
+        <a href="{{ site.github.latest_release.assets[1].browser_download_url }}" class="btn">
+          <i class="fas fa-download"></i>Download <strong>{{ site.github.latest_release.name }}</strong>
+        </a>
       {% endif %}
       {% if site.github.is_project_page %}
         <a href="{{ site.github.repository_url }}" class="btn">View on GitHub</a>
