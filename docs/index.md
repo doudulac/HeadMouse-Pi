@@ -1,3 +1,8 @@
+---
+layout: default
+---
+# HeadMouse Pi
+
 The HeadMouse Pi is a low cost, universal, head-tracking mouse built from a Raspberry Pi and
 Camera Module or ordinary webcam. Its goal is to be a viable computer access technology for me
 and others who lack the ability to use their hands. It offers a low-cost and no-insurance-required 

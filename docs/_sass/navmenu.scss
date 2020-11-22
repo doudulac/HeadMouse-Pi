@@ -1,0 +1,43 @@
+
+nav#menu {
+    color: $header-heading-color;
+    background-color: adjust-color($header-bg-color, $green: -9);
+    background-image: linear-gradient(120deg, $header-bg-color-secondary, adjust-color($header-bg-color, $green: -9));
+    text-align: center;
+    padding: 0.2rem 0;
+    font-family: Lato;
+    text-transform: uppercase;
+    font-size: 1rem;
+    font-size: 0.85rem;
+    padding: 0.2rem 0.5rem;
+    font-family: "Josefin Sans", Lato, "Open Sans", sans-serif;
+    /* per jimmac */
+    font-family: 'Open Sans', sans-serif;
+    font-size: 0.85rem;
+    font-weight: 400;
+    font-weight: 600;
+    letter-spacing: 0.06rem;
+    padding: 0.5rem;
+}
+
+nav#menu ul, nav#menu ul li {
+    padding: 0;
+    display: inline;
+}
+
+nav#menu ul > li {
+    margin-left: 1.5rem;
+    letter-spacing: 0.15rem;
+}
+
+nav#menu ul > li:first-of-type {
+    margin-left: 0;
+}
+
+nav#menu ul > li a{
+    color: $hr-border-color;
+}
+
+nav#menu ul > li:last-of-type {
+    white-space: nowrap;
+}
