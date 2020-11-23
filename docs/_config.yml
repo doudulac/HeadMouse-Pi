@@ -3,9 +3,8 @@ baseurl: "/HeadMouse-Pi"
 url: "https://doudulac.github.io"
 github_username:  doudulac
 show_downloads: true
+timezone: America/New_York
 
 # Build settings
 markdown: kramdown
 theme: jekyll-theme-cayman
-plugins:
-  - jekyll-github-metadata
