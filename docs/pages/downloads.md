@@ -4,10 +4,13 @@ permalink: /downloads/
 ---
 # Downloads
 
-Headmouse Pi is provided as a pre-built image that can be installed onto a microSD card. The image
-contains everything necessary to make a [Raspberry Pi 4B](https://www.raspberrypi.org/products/raspberry-pi-4-model-b/)
-function as a HeadMouse Pi. It is primarily a [Raspberry Pi OS Lite](https://www.raspberrypi.org/software/operating-systems/)
-image with `headmouse.py` and the supporting software added. The image is generated using
+Headmouse Pi is provided as a pre-built binary image file that can be easily installed onto a
+microSD card using the [Raspberry Pi Imager](https://www.raspberrypi.org/software/).
+The image is compressed into a _*.zip_ file and contains everything necessary to make a
+[Raspberry Pi 4B](https://www.raspberrypi.org/products/raspberry-pi-4-model-b/)
+function as a HeadMouse Pi. The contents of the image are: first, a standard build of the 
+[Raspberry Pi OS Lite](https://www.raspberrypi.org/software/operating-systems/) operating system,
+and second, the HeadMouse Pi and additional supporting software. The image is generated using
 [pi-gen](https://github.com/RPi-Distro/pi-gen#pi-gen), the same "tool used to create Raspberry Pi OS
 images."
 
