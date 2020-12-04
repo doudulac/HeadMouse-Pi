@@ -615,7 +615,7 @@ class Eyes(object):
         self._open = False
         dt = None if fps is None else 1.0 / fps
         self.kf = MyKalmanFilter(dim_x=2, dim_z=1, dt=dt, Q=1.0, R=.05)
-        self._pupilary_dist = None
+        self._pupillary_dist = None
         self.send_debug_data = False
 
     def update(self):
@@ -624,13 +624,13 @@ class Eyes(object):
         shapes = self.face.shapes
         if shapes is None:
             ear = 0
-            self._pupilary_dist = 0
+            self._pupillary_dist = 0
             kpos = 0
             kvel = 0
         else:
             rec = feature_center(shapes[36:42])
             lec = feature_center(shapes[42:48])
-            self._pupilary_dist = point_distance(rec, lec)
+            self._pupillary_dist = point_distance(rec, lec)
 
             red = (point_distance(shapes[37], shapes[41]) + point_distance(shapes[38], shapes[40])) / \
                   (2.0 * point_distance(shapes[36], shapes[39]))
@@ -654,15 +654,15 @@ class Eyes(object):
             ))
 
         if self.send_debug_data:
-            self._ws.socketio.emit('eyes_data', [ear, kpos, kvel, self._pupilary_dist, self._open])
+            self._ws.socketio.emit('eyes_data', [ear, kpos, kvel, self._pupillary_dist, self._open])
 
     @property
     def open(self):
         return self._open
 
     @property
-    def pupilary_dist(self):
-        return self._pupilary_dist
+    def pupillary_dist(self):
+        return self._pupillary_dist
 
     def button_up(self):
         return self.open
