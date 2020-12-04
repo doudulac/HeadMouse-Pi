@@ -780,9 +780,13 @@ class MousePointer(object):
         self._dx = None
         self._dy = None
         self._click = None
+        # todo: unlink gestures from actions, make user preference
+        # todo: add gesture for wheel
         self.btn = {1: {'s': 0, 'f': self.face.brows},
                     2: {'s': 0, 'f': self.face.mouth},
                     3: {'s': 0, 'f': None}, }
+        # todo: pause on "no face", resume on "click pattern"
+        # todo: don’t pause on smile
         self.pausebtn = {'s': 0, 'f': self.face.eyes}
         self._paused = False
         self.cpos = None
@@ -806,6 +810,8 @@ class MousePointer(object):
         #               4.1, 4.2, 4.3, 4.4, 4.5,
         #               4.6, 4.7, 4.8, 4.9, 5.0,
         #               5.1, 5.2, 5.3, 5.4, 5.5, ]
+        # todo: make acceleration table user preference
+        # todo: adjust gain based on pupillary distance, adjust sensitivity based on head size/ratio
         self.accel = [1.0]*10 + [2.0]*20
 
     def open_hidg(self):
@@ -1587,6 +1593,8 @@ def feature_center(shapes):
 
 
 def parse_arguments():
+    # todo: document headmouse usage
+    # todo: add config file for persistent preferences
     # noinspection PyTypeChecker
     parser = MyArgumentParser(formatter_class=ArgumentDefaultsHelpFormatter)
     parser.add_argument("-c", "--camera-mode", default=2, type=int, choices=range(1, 5),

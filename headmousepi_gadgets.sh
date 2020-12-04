@@ -1,4 +1,5 @@
 #!/bin/bash
+# todo: document gadget install
 
 dtoverlay dwc2
 modprobe dwc2
@@ -16,6 +17,7 @@ echo "HeadMouse Pi" > strings/0x409/manufacturer
 echo "HeadMouse Pi" > strings/0x409/product
 
 N="usb0"
+# todo: rndis gadget for windows eth?
 mkdir -p functions/ecm.$N
 mkdir -p functions/hid.$N
 
