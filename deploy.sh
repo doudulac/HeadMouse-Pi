@@ -17,6 +17,7 @@ fi
 EXCLUDES="--exclude \".*\" "
 EXCLUDES+="--exclude __pycache__/ "
 EXCLUDES+="--exclude hm.log "
+EXCLUDES+="--exclude config.ini "
 EXCLUDES+="--exclude deploy.sh "
 EXCLUDES+="--exclude docs/ "
 

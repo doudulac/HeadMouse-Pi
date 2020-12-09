@@ -29,7 +29,6 @@ import subprocess
 import sys
 import time
 import traceback
-from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
 from os.path import getmtime
 from threading import Thread
 
@@ -38,6 +37,7 @@ import dlib
 import eventlet
 import numpy as np
 import yappi
+from configargparse import ArgumentParser, ArgumentDefaultsHelpFormatter
 from filterpy.common.discretization import Q_discrete_white_noise
 from filterpy.kalman import KalmanFilter
 from flask import Response
@@ -1594,9 +1594,10 @@ def feature_center(shapes):
 
 def parse_arguments():
     # todo: document headmouse usage
-    # todo: add config file for persistent preferences
     # noinspection PyTypeChecker
-    parser = MyArgumentParser(formatter_class=ArgumentDefaultsHelpFormatter)
+    cwd = os.path.abspath(os.path.dirname(__file__))
+    config_path = os.path.abspath(os.path.join(cwd, "config.ini"))
+    parser = MyArgumentParser(formatter_class=ArgumentDefaultsHelpFormatter, default_config_files=[config_path])
     parser.add_argument("-c", "--camera-mode", default=2, type=int, choices=range(1, 5),
                         help="camera mode 1:320x240@30 2:640x480@30 3:800x600@15 4:1024x768@10")
     parser.add_argument("-e", "--ebd", default=2.5, type=float,
@@ -1621,7 +1622,7 @@ def parse_arguments():
                         help="X gain")
     parser.add_argument("-y", "--ygain", default=4.5, type=float,
                         help="Y gain")
-    parser.add_argument("--ear", default=.15,
+    parser.add_argument("--ear", default=.15, type=float,
                         help="eye aspect ratio threshold")
     parser.add_argument("--onraspi", action="store_true",
                         help="force raspi mode")
@@ -1643,6 +1644,8 @@ def parse_arguments():
                         help="output mouse debug data")
 
     args = parser.parse_args()
+    if not os.path.isfile(config_path):
+        parser.write_config_file(args, [config_path])
     return args, parser
 
 
