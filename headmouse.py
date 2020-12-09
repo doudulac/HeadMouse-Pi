@@ -545,11 +545,11 @@ class Eyebrows(object):
             self._ebds.append(self._ebds.pop(0))
             self._ebds[-1] = ebd
 
-        maxangle = 12
+        # maxangle = 12
         self._cur_height = sum(self._ebds[_s:]) / len(self._ebds[_s:])
         self._ave_height = sum(self._ebds[:_s]) / len(self._ebds[:_s])
         _d = self._cur_height - self._ave_height
-        f_a = maxangle > self.face.x_angle > -maxangle and maxangle > self.face.y_angle > -maxangle
+        f_a = True  # maxangle > self.face.x_angle > -maxangle and maxangle > self.face.y_angle > -maxangle
         h_y = self._cur_height >= 17
 
         if _args_.stickyclick:
