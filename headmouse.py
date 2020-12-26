@@ -472,7 +472,7 @@ class MouthOpen(object):
         _r = self._vdist / self._hdist if self._hdist != 0 else 0
 
         if not self._open:
-            self._open = _r >= .50
+            self._open = _r >= .40
         else:
             self._open = _r >= .40
 
@@ -786,8 +786,7 @@ class MousePointer(object):
                     2: {'s': 0, 'f': self.face.mouth},
                     3: {'s': 0, 'f': None}, }
         # todo: pause on "no face", resume on "click pattern"
-        # todo: don’t pause on smile
-        self.pausebtn = {'s': 0, 'f': self.face.eyes}
+        self.pausebtn = {'s': 0, 'f': self.face.mouth}
         self._paused = False
         self.cpos = None
         self.angle = None
@@ -833,6 +832,8 @@ class MousePointer(object):
         else:
             self._paused = not self._paused
         self.face.brows.reset()
+        self.send_keyboard([41])    # ESC to cancel context menu
+        self.send_keyboard()
         if _args_.verbose > 0:
             log.info('{}pause'.format('' if self.paused else 'un'))
 
@@ -952,12 +953,12 @@ class MousePointer(object):
                 # wait for button up to activate
                 btn['s'] = -1
         elif btn['s'] < 0:
-            if btn['f'].button_up():
-                btn['s'] = 0
-                self.pause()
+            # if btn['f'].button_up():
+            btn['s'] = 0
+            self.pause()
 
         if btn['s'] == 0 and btn['f'].button_down():
-            btn['s'] = int(round(_fps_.fps() * 1.5))
+            btn['s'] = int(round(_fps_.fps() * 1.0))
 
     def update(self):
         self.process_pause()
@@ -969,8 +970,9 @@ class MousePointer(object):
             self._click = 0
             self.send_mouse_relative(0, 0, 0)
         elif self.face.shapes is not None:
-            x, y = self.process_circle_pattern()
-            self.send_mouse_absolute(x, y, 0)
+            # x, y = self.process_circle_pattern()
+            # self.send_mouse_absolute(x, y, 0)
+            pass
 
     def send_keyboard(self, keys=None, lctrl=False, lshift=False, lalt=False, lgui=False, rctrl=False, rshift=False,
                       ralt=False, rgui=False):
