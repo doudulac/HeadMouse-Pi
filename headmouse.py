@@ -972,6 +972,31 @@ class MousePointer(object):
             x, y = self.process_circle_pattern()
             self.send_mouse_absolute(x, y, 0)
 
+    def send_keyboard(self, keys=None, lctrl=False, lshift=False, lalt=False, lgui=False, rctrl=False, rshift=False,
+                      ralt=False, rgui=False):
+        if self._fd is None or _args_.debug:
+            return
+
+        meta = 0
+        meta |= 1 << 0 if lctrl else 0
+        meta |= 1 << 1 if lshift else 0
+        meta |= 1 << 2 if lalt else 0
+        meta |= 1 << 3 if lgui else 0
+        meta |= 1 << 4 if rctrl else 0
+        meta |= 1 << 5 if rshift else 0
+        meta |= 1 << 6 if ralt else 0
+        meta |= 1 << 7 if rgui else 0
+
+        _l = 5
+        if keys is None:
+            keys = [0]*_l
+        if len(keys) > _l:
+            keys = keys[:_l]
+        else:
+            keys += [0]*(_l - len(keys))
+        report = struct.pack('<9b', 1, meta, 0, 0, *keys)
+        self._fd.write(report)
+
     def send_mouse_relative(self, click, dx, dy):
         if self._fd is not None and not _args_.debug:
             report = struct.pack('<2b2h', 2, click, dx, dy)
