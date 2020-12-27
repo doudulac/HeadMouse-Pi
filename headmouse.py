@@ -771,6 +771,20 @@ class Nose(object):
         return self._positions[1]
 
 
+class Keyboard(object):
+    usage_ids = {'NUL': 0,
+                 'A': 4, 'B': 5, 'C': 6, 'D': 7, 'E': 8, 'F': 9, 'G': 10, 'H': 11, 'I': 12, 'J': 13, 'K': 14, 'L': 15,
+                 'M': 16, 'N': 17, 'O': 18, 'P': 19, 'Q': 20, 'R': 21, 'S': 22, 'T': 23, 'U': 24, 'V': 25, 'W': 26,
+                 'X': 27, 'Y': 28, 'Z': 29,
+                 '1': 30, '2': 31, '3': 32, '4': 33, '5': 34, '6': 35, '7': 36, '8': 37, '9': 38, '0': 39,
+                 'RET': 40, 'ESC': 41, 'BACK': 42, 'TAB': 43, 'SPACE': 44,
+                 '-': 45, '=': 46, '[': 47, ']': 48, '\\': 49, ';': 51, "'": 52, '`': 53, ',': 54, '.': 55, '/': 56,
+                 'CAPS': 57, 'F1': 58, 'F2': 59, 'F3': 60, 'F4': 61, 'F5': 62, 'F6': 63, 'F7': 64, 'F8': 65, 'F9': 66,
+                 'F10': 67, 'F11': 68, 'F12': 69,
+                 'PRSCR': 70, 'SCRLCK': 71, 'PAUSE': 72, 'INSERT': 73, 'HOME': 74, 'PGUP': 75, 'DEL': 76, 'END': 77,
+                 'PGDOWN': 78, 'RIGHT': 79, 'LEFT': 80, 'DOWN': 81, 'UP': 82}
+
+
 class MousePointer(object):
     def __init__(self, face, mindeltathresh=None, webserver=None):
         self.face = face
@@ -832,7 +846,7 @@ class MousePointer(object):
         else:
             self._paused = not self._paused
         self.face.brows.reset()
-        self.send_keyboard([41])    # ESC to cancel context menu
+        self.send_keyboard(['ESC'])    # ESC to cancel context menu
         self.send_keyboard()
         if _args_.verbose > 0:
             log.info('{}pause'.format('' if self.paused else 'un'))
@@ -991,11 +1005,11 @@ class MousePointer(object):
 
         _l = 5
         if keys is None:
-            keys = [0]*_l
-        if len(keys) > _l:
+            keys = ['NUL']*_l
+        elif len(keys) > _l:
             keys = keys[:_l]
-        else:
-            keys += [0]*(_l - len(keys))
+        keys += ['NUL']*(_l - len(keys))
+        keys = [Keyboard.usage_ids.get(k, 0) for k in keys]
         report = struct.pack('<9b', 1, meta, 0, 0, *keys)
         self._fd.write(report)
 
