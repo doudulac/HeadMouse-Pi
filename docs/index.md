@@ -16,51 +16,17 @@ the movement and facial gestures into a USB mouse protocol.
 * [Story Behind HeadMouse Pi](about/#backstory)
 
 ## Gallery
-<style>
-  #mac-pi-1-img {
-    width: 600px;
-    height: 450px;
-    background: url("{{ '/assets/images/mac-pi-1.jpg' | relative_url }}");
-    background-position: center;
-    background-size: cover;
-  }
-  #mac-pi-2-img {
-    width: 600px;
-    height: 450px;
-    background: url("{{ '/assets/images/mac-pi-2.jpg' | relative_url }}");
-    background-position: center;
-    background-size: cover;
-  }
-  #pc-pi-1-img {
-    width: 600px;
-    height: 450px;
-    background: url("{{ '/assets/images/pc-pi-1.jpg' | relative_url }}");
-    background-position: center;
-    background-size: cover;
-  }
-  #pc-pi-2-img {
-    width: 600px;
-    height: 450px;
-    background: url("{{ '/assets/images/pc-pi-2.jpg' | relative_url }}");
-    background-position: center;
-    background-size: cover;
-  }
-</style>
-<script src="{{ '/assets/js/zoom.js' | relative_url }}"></script>
+<div id='img-gallery'></div>
 <script>
-  window.addEventListener("load", function(){
-    addZoom("mac-pi-1-img");
-    addZoom("mac-pi-2-img");
-    addZoom("pc-pi-1-img");
-    addZoom("pc-pi-2-img");
-  });
-</script>
-
-<div id="mac-pi-1-img"></div>
-&nbsp;
-<div id="mac-pi-2-img"></div>
-&nbsp;
-<div id="pc-pi-1-img"></div>
-&nbsp;
-<div id="pc-pi-2-img"></div>
-&nbsp;
+    var urls = [
+        "{{ '/assets/images/mac-pi-1.jpg' | relative_url }}",
+        "{{ '/assets/images/mac-pi-2.jpg' | relative_url }}",
+        "{{ '/assets/images/pc-pi-1.jpg' | relative_url }}",
+        "{{ '/assets/images/pc-pi-2.jpg' | relative_url }}"
+    ];
+    var options = {
+        width:600,
+        height:450,
+    };
+    $('#img-gallery').zoomy(urls,options);
+ </script>
